@@ -1,0 +1,5 @@
+.elasticbeanstalk/
+*~
+*.pyc
+.idea/
+.DS_Store

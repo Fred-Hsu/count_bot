@@ -1,0 +1,22 @@
+{% set version = "0.1.0" %}
+
+package:
+  name: count_bot
+  version: {{ version }}
+
+requirements:
+  host:
+    - python
+    - pip
+  run:
+    - python
+
+about:
+  home:
+  license:
+  summary: 'Keep count of current production numbers of face shields in volunteers' possession until the next drop.'
+  description: |
+    Keep count of current production numbers of face shields in volunteers' possession until the next drop.
+  dev_url:
+  doc_url:
+  doc_source_url:
