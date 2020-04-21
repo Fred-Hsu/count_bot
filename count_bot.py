@@ -1,7 +1,15 @@
+"""
+Dicoard bot that keeps count of current numbers of face shields in each person's possession until the next drop.
+
+NOTE: Discord.py isn't available as a Conda package it seems. So it is not specified in meta.yaml. Install directly:
+   python -m pip install -U discord.py
+"""
 import discord
 import logging
-from discord.ext import commands
 import random
+
+from functools import lru_cache
+from discord.ext import commands
 from my_tokens import get_bot_token
 
 logging.basicConfig(level=logging.INFO)
@@ -52,8 +60,16 @@ async def on_ready():
     print('------')
 
 
+@lru_cache()
+def get_inventory_channel():
+    for ch in bot.get_all_channels():
+        if ch.name == INVENTORY_CHANNEL:
+            return ch
+    raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
+
+
 @bot.command()
-async def add(ctx, left: int, right: int):
+async def count(ctx, total: int):
     """Adds two numbers together."""
     await ctx.send(left + right)
 
