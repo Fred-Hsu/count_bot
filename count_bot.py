@@ -2,7 +2,7 @@ import discord
 import logging
 from discord.ext import commands
 import random
-from my_tokens import _MY_DISCORD_BOT_TOKEN
+from my_tokens import get_bot_token
 
 logging.basicConfig(level=logging.INFO)
 
@@ -65,4 +65,4 @@ async def _bot(ctx):
     """Is the bot cool?"""
     await ctx.send('Yes, the bot is cool.')
 
-bot.run(_MY_DISCORD_BOT_TOKEN)
+bot.run(get_bot_token())
