@@ -6,7 +6,7 @@ from my_tokens import get_bot_token
 
 logging.basicConfig(level=logging.INFO)
 
-INVENTORY_CHANNEL = 'sandbox'  # The bot only listens to text channels with this prefix or postfix, or DMs
+INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this text channel, or DM channels
 
 
 def fake_command_prefix_in_right_channel(_bot, message):
@@ -20,24 +20,23 @@ def fake_command_prefix_in_right_channel(_bot, message):
     """
     ch = message.channel
     if ch.type == discord.ChannelType.private:
-        print('private')
         return ''  # no command prefix means that comments from this DM channel will be matched and processed
     elif ch.type != discord.ChannelType.text:
-        print('not text')
         return '#fake-prefix-no-one-uses#'
-    elif ch.name.endswith(INVENTORY_CHANNEL) or ch.name.startswith(INVENTORY_CHANNEL):
-        print('sandbox')
+    elif ch.name == INVENTORY_CHANNEL:
         return ''
-    print('wrong channel')
     return '#fake-prefix-no-one-uses#'
 
 
-description = '''Keep count of current numbers of face shields in each person's possession until the next drop.'''
+description = '''Keep count of current numbers of face shields in each person's possession until the next drop. ''' \
+    '''You can talk to this bot in a direct message (DM) channel, or the assigned '{0}' channel. ''' \
+    '''Help commands that generate too much output get redirected to your DM channel.''' \
+    .format(INVENTORY_CHANNEL)
+
 bot = commands.Bot(
     description=description,
     case_insensitive=True,  # No need to be draconian with case
     command_prefix=fake_command_prefix_in_right_channel,
-
     help_command=commands.DefaultHelpCommand(
         no_category='Commands:',
         dm_help=True,
