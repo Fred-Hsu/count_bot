@@ -22,11 +22,14 @@ async def on_message(message):
 
     print('received on channel [{0}]'.format(message.channel))
 
-    if message.content.startswith('$send'):
+    if message.content.startswith('help') or message.content.startswith('$help'):
+        await message.channel.send('I am just a dumb bot right now. Will get smarter and be useful soon')
+
+    elif message.content.startswith('$send'):
         await message.channel.send('Hello! [{0}] on channel [{1}]'.format(message.author, message.channel))
         await message.channel.send(file=discord.File('test_file.txt'))
 
-    if message.content.startswith('$list'):
+    elif message.content.startswith('$list'):
         async for message in message.channel.history(limit=None):
             if message.author == client.user:
                 if message.attachments:
