@@ -8,9 +8,17 @@ logging.basicConfig(level=logging.INFO)
 
 INVENTORY_CHANNEL = 'test-sandbox'
 
-description = '''An example bot to showcase the discord.ext.commands extension module.
-There are a number of utility commands being showcased here.'''
-bot = commands.Bot(command_prefix='?', description=description)
+description = '''Keep count of current numbers of face shields in each person's possession until the next drop.'''
+bot = commands.Bot(
+    description=description,
+    command_prefix='',          # No need for prefix. We only run the bot in special channels and in DM channels
+    case_insensitive=True,      # No need to be draconian with case
+
+    help_command=commands.DefaultHelpCommand(
+        no_category='Commands:',
+        dm_help=True,
+    ),
+)
 
 @bot.event
 async def on_ready():
@@ -18,6 +26,10 @@ async def on_ready():
     print(bot.user.name)
     print(bot.user.id)
     print('------')
+
+
+
+
 
 @bot.command()
 async def add(ctx, left: int, right: int):
