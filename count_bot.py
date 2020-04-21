@@ -1,39 +1,68 @@
 import discord
 import logging
+from discord.ext import commands
+import random
 from my_tokens import _MY_DISCORD_BOT_TOKEN
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 INVENTORY_CHANNEL = 'test-sandbox'
 
-client = discord.Client()
+description = '''An example bot to showcase the discord.ext.commands extension module.
+There are a number of utility commands being showcased here.'''
+bot = commands.Bot(command_prefix='?', description=description)
 
-
-@client.event
+@bot.event
 async def on_ready():
-    print('We have logged in as {0.user}'.format(client))
+    print('Logged in as')
+    print(bot.user.name)
+    print(bot.user.id)
+    print('------')
 
+@bot.command()
+async def add(ctx, left: int, right: int):
+    """Adds two numbers together."""
+    await ctx.send(left + right)
 
-@client.event
-async def on_message(message):
-    print('received message [{0}] from user [{1}]'.format(message.content, message.author))
-    if message.author == client.user:
+@bot.command()
+async def roll(ctx, dice: str):
+    """Rolls a dice in NdN format."""
+    try:
+        rolls, limit = map(int, dice.split('d'))
+    except Exception:
+        await ctx.send('Format has to be in NdN!')
         return
 
-    print('received on channel [{0}]'.format(message.channel))
+    result = ', '.join(str(random.randint(1, limit)) for r in range(rolls))
+    await ctx.send(result)
 
-    if message.content.startswith('help') or message.content.startswith('$help'):
-        await message.channel.send('I am just a dumb bot right now. Will get smarter and be useful soon')
+@bot.command(description='For when you wanna settle the score some other way')
+async def choose(ctx, *choices: str):
+    """Chooses between multiple choices."""
+    await ctx.send(random.choice(choices))
 
-    elif message.content.startswith('$send'):
-        await message.channel.send('Hello! [{0}] on channel [{1}]'.format(message.author, message.channel))
-        await message.channel.send(file=discord.File('test_file.txt'))
+@bot.command()
+async def repeat(ctx, times: int, content='repeating...'):
+    """Repeats a message multiple times."""
+    for i in range(times):
+        await ctx.send(content)
 
-    elif message.content.startswith('$list'):
-        async for message in message.channel.history(limit=None):
-            if message.author == client.user:
-                if message.attachments:
-                    msg = '  {0}'.format(message.attachments[0].url)
-                    await message.channel.send(msg)
+@bot.command()
+async def joined(ctx, member: discord.Member):
+    """Says when a member joined."""
+    await ctx.send('{0.name} joined in {0.joined_at}'.format(member))
 
-client.run(_MY_DISCORD_BOT_TOKEN)
+@bot.group()
+async def cool(ctx):
+    """Says if a user is cool.
+    In reality this just checks if a subcommand is being invoked.
+    """
+    if ctx.invoked_subcommand is None:
+        await ctx.send('No, {0.subcommand_passed} is not cool'.format(ctx))
+
+@cool.command(name='bot')
+async def _bot(ctx):
+    """Is the bot cool?"""
+    await ctx.send('Yes, the bot is cool.')
+
+bot.run(_MY_DISCORD_BOT_TOKEN)
