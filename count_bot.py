@@ -1,5 +1,10 @@
 """
-Dicoard bot that keeps count of current numbers of face shields in each person's possession until the next drop.
+Discoard bot that keeps count of current numbers of face shields in each person's possession until the next drop.
+
+The Count Bot leaches from a Discord server for free storage. This bot does not store anything on the bot host
+(AWS or your local desktop). The bot only keeps a in-memory Pandas dataframe of inventory. It keeps this memory
+inventory synchronized as along as it lives, with what is stored in Discord. If the bot dies, it can be restarted,
+and it will rebuild its memory inventory by reading from Discord.
 
 NOTE: Discord.py isn't available as a Conda package it seems. So it is not specified in meta.yaml. Install directly:
    python -m pip install -U discord.py
@@ -7,7 +12,7 @@ NOTE: Discord.py isn't available as a Conda package it seems. So it is not speci
 import discord
 import logging
 import random
-
+import pandas as pd
 from functools import lru_cache
 from discord.ext import commands
 from my_tokens import get_bot_token
@@ -15,6 +20,19 @@ from my_tokens import get_bot_token
 logging.basicConfig(level=logging.INFO)
 
 INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this text channel, or DM channels
+
+# Items are things that makers can print or build.
+ITEM_CHOICES = {
+    'verkstan':  "3D Verkstan head band",
+    'prusa':     "Prusa head band",
+    'visor':     "Transparency sheet",
+}
+
+VARIANT_CHOICES = {
+    'verkstan':  ["PETG", "PLA"],
+    'prusa':     ["PETG", "PLA"],
+    'visor':     ["verkstan", "prusa"],
+}
 
 
 def fake_command_prefix_in_right_channel(_bot, message):
@@ -62,16 +80,30 @@ async def on_ready():
 
 @lru_cache()
 def get_inventory_channel():
+    """Find the right inventory channel model"""
     for ch in bot.get_all_channels():
         if ch.name == INVENTORY_CHANNEL:
             return ch
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
 
 
+@lru_cache()
+def get_inventory_df():
+    """
+    Troll through inventory channel's message records to rebuilt our memory inventory dataframe.
+    """
+    # FIXME - troll through get_inventory_channel() to rebuild the dataframe.
+    # Right now it returns only an empty DF.
+    column_names = ["user_id", "item", "variant", "count"]
+    return pd.DataFrame(columns = column_names)
+
+
 @bot.command()
-async def count(ctx, total: int):
-    """Adds two numbers together."""
-    await ctx.send(left + right)
+async def count(ctx, total: int=None, item: str = None, variant: str = None):
+    """Update the current {total} count of an {item} of {variant} type under the possesion of the user."""
+
+    txt = '{0} did it'.format(ctx.message.author.mention)
+    await ctx.send(txt)
 
 
 @bot.command()
