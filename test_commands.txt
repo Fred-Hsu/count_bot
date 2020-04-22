@@ -1,0 +1,16 @@
+
+- Start with an empty DF
+
+. Errors
+count
+count wrong arg
+count 1
+count 1 wrong wrong
+
+. Adding rows
+count 12 verkstan petg
+count
+count 3 pru pla
+count
+count 23 verkstan petg
+count
