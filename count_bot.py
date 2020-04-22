@@ -36,6 +36,8 @@ VARIANT_CHOICES = {
     'visor':     ["verkstan", "prusa"],
 }
 
+DEBUG_DISABLE_INVENTORY_POSTS = False  # Leave False for production run. Set to True to debug only in DM channel
+
 ALIAS_MAPS = {}
 
 
@@ -79,7 +81,7 @@ bot = commands.Bot(
     command_prefix=fake_command_prefix_in_right_channel,
     help_command=commands.DefaultHelpCommand(
         no_category='Commands',
-        dm_help=True,
+        dm_help=False,   # TODO - change this to True to redirect help text that are too long to user's own DM channels?
     ),
 )
 
@@ -94,7 +96,7 @@ async def on_command_error(ctx, error):
     This is a global error handler for all commands. Each command can also provide its own specific error handler.
     """
     if isinstance(error, commands.errors.BadArgument):
-        await ctx.send("I don't completely understand. Please see help doc in DM channel:")
+        await ctx.send("I don't completely understand. Please see help doc:")
         await ctx.send_help(ctx.command)
     else:
         # If this listener doesn't exist, the Bot.on_command_error does this:
@@ -132,10 +134,14 @@ def get_inventory_df():
     """
     # FIXME - troll through get_inventory_channel() to rebuild the dataframe.
     # Right now it returns only an empty DF.
+    # dummy_data = [
+    #     ['123', 'prusa', 'PETG', 3],
+    # ]
+    dummy_data = []
+
     column_names = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
-    df = pd.DataFrame(columns=column_names)
-    df.set_index(keys=COL_USER_ID)
-    return df
+    df = pd.DataFrame(dummy_data, columns=column_names)
+    return df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=False, verify_integrity=True, drop=False)
 
 
 @bot.command(
@@ -143,8 +149,9 @@ def get_inventory_df():
     description='Update the current {total} count of an {item} of {variant} type from a maker:')
 async def count(ctx, total: int = None, item: str = None, variant: str = None):
     """
-    Item and variant choices are shown below. Words are case-insensitive. You can also use aliases such as 'ver',
-    'verk', 'pru', 'pet' and 'vis', 'viso', etc. to refer to the the full item and variant names.
+    Item and variant choices are shown below. Words are case-insensitive.
+    You can also use aliases such as 'ver', 'verk', 'pru', 'pet'
+    and 'vis', 'viso', etc. to refer to the the full item and variant names.
 
     Item        variant
     --------------------
@@ -154,17 +161,26 @@ async def count(ctx, total: int = None, item: str = None, variant: str = None):
     prusa       PLA
     visor       verkstan
     visor       prusa
+
+    If you have already recorded items in the system before, you can use "count" without any arguments
+    to show items you have recorded. This usage is equivalent to the "show" command without arguments.
     """
     df = get_inventory_df()
+    print( 'count command - current DF:')
     print(df)
 
     user_id = ctx.message.author.id
-    # print(df.loc[user_id, [COL_ITEM, COL_VARIANT, COL_COUNT]])
     cond = df[COL_USER_ID] == user_id
-    if not sum(cond):
-        if total is None or not item or not variant:
-            await ctx.send('You have not recorded any item types yet. Please see "help count" doc in DM channel.')
+    if total is None or not item or not variant:
+        if not sum(cond):
+            await ctx.send('You have not recorded any item types yet. Please see the "help count" doc:')
             await ctx.send_help(bot.get_command('count'))
+            return
+        else:
+            # "count" without argument with existing inventory - same as "show" without args
+            result = df[cond]
+            result = result.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT]]
+            await ctx.send("```{0}```".format(result.to_string(index=False)))
             return
 
     item_name = ALIAS_MAPS.get(item.lower())
@@ -179,19 +195,20 @@ async def count(ctx, total: int = None, item: str = None, variant: str = None):
         await ctx.send_help(ctx.command)
         return
 
-    txt = '{0} {1} {2} = {3}'.format(ctx.message.author.mention, item_name, variant_name, total)
+    txt = '{0}: {1} {2} {3}'.format(ctx.message.author.mention, total, item_name, variant_name)
     await ctx.send(txt)
     # If private DM channel, also post to inventory channel
     if ctx.message.channel.type == discord.ChannelType.private:
         ch = get_inventory_channel()
-        # FIXME - uncomment this before committing
-        # await ch.send(txt)
+
+        if not DEBUG_DISABLE_INVENTORY_POSTS:
+            await ch.send(txt + ' (from DM chat)')
 
     # Only update memory DF after we have persisted the message to the inventory channel.
     # Think of the inventory channel as "disk", the permanent store.
     # If the bot crashes right here, it can always restore its previous state by trolling through the inventory
     # channel and all DM rooms, to find user commands it has not succesfully processed.
-    df.loc[user_id] = [COL_USER_ID, user_id, COL_ITEM, item_name, COL_VARIANT, variant_name, COL_COUNT, total]
+    df.loc[(user_id, item_name, variant_name)] = [user_id, item_name, variant_name, total]
 
 
 bot.run(get_bot_token())
