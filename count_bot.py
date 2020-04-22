@@ -179,65 +179,19 @@ async def count(ctx, total: int = None, item: str = None, variant: str = None):
         await ctx.send_help(ctx.command)
         return
 
-
-
-    txt = 'Hi {0}'.format(ctx.message.author.mention)
+    txt = '{0} {1} {2} = {3}'.format(ctx.message.author.mention, item_name, variant_name, total)
     await ctx.send(txt)
+    # If private DM channel, also post to inventory channel
+    if ctx.message.channel.type == discord.ChannelType.private:
+        ch = get_inventory_channel()
+        # FIXME - uncomment this before committing
+        # await ch.send(txt)
 
+    # Only update memory DF after we have persisted the message to the inventory channel.
+    # Think of the inventory channel as "disk", the permanent store.
+    # If the bot crashes right here, it can always restore its previous state by trolling through the inventory
+    # channel and all DM rooms, to find user commands it has not succesfully processed.
+    df.loc[user_id] = [COL_USER_ID, user_id, COL_ITEM, item_name, COL_VARIANT, variant_name, COL_COUNT, total]
 
-@bot.command(description='For when you wanna settle the score some other way')
-async def choose(ctx, *choices: str):
-    """Chooses between multiple choices."""
-    await ctx.send(choices[0])
-
-
-
-'''
-@bot.command()
-async def roll(ctx, dice: str):
-    """Rolls a dice in NdN format."""
-    try:
-        rolls, limit = map(int, dice.split('d'))
-    except Exception:
-        await ctx.send('Format has to be in NdN!')
-        return
-
-    result = ', '.join(str(random.randint(1, limit)) for r in range(rolls))
-    await ctx.send(result)
-
-
-@bot.command(description='For when you wanna settle the score some other way')
-async def choose(ctx, *choices: str):
-    """Chooses between multiple choices."""
-    await ctx.send(random.choice(choices))
-
-
-@bot.command()
-async def repeat(ctx, times: int, content='repeating...'):
-    """Repeats a message multiple times."""
-    for i in range(times):
-        await ctx.send(content)
-
-
-@bot.command()
-async def joined(ctx, member: discord.Member):
-    """Says when a member joined."""
-    await ctx.send('{0.name} joined in {0.joined_at}'.format(member))
-
-
-@bot.group()
-async def cool(ctx):
-    """Says if a user is cool.
-    In reality this just checks if a subcommand is being invoked.
-    """
-    if ctx.invoked_subcommand is None:
-        await ctx.send('No, {0.subcommand_passed} is not cool'.format(ctx))
-
-
-@cool.command(name='bot')
-async def _bot(ctx):
-    """Is the bot cool?"""
-    await ctx.send('Yes, the bot is cool.')
-'''
 
 bot.run(get_bot_token())
