@@ -12,6 +12,9 @@ NOTE: Discord.py isn't available as a Conda package it seems. So it is not speci
 import discord
 import logging
 import pandas as pd
+import sys
+import traceback
+
 from functools import lru_cache
 from discord.ext import commands
 from my_tokens import get_bot_token
@@ -34,10 +37,16 @@ VARIANT_CHOICES = {
 }
 
 ALIAS_MAPS = {}
-for item, variants in VARIANT_CHOICES.items():
-    ALIAS_MAPS.update([(item[:i], item) for i in range(3, len(item))])
-    for variant in variants:
-        ALIAS_MAPS.update([(variant[:i], variant) for i in range(3, len(variant))])
+
+
+def _setup_aliases():
+    for item, variants in VARIANT_CHOICES.items():
+        ALIAS_MAPS.update([(item[:i].lower(), item) for i in range(3, len(item)+1)])
+        for variant in variants:
+            ALIAS_MAPS.update([(variant[:i].lower(), variant) for i in range(3, len(variant)+1)])
+
+
+_setup_aliases()
 
 
 def fake_command_prefix_in_right_channel(_bot, message):
@@ -73,6 +82,24 @@ bot = commands.Bot(
         dm_help=True,
     ),
 )
+
+
+@bot.listen()
+async def on_command_error(ctx, error):
+    """
+    DiscordPy command failures are horrible. If input argument as much as fail a tpye checking/conversion,
+    callstack is printed, and nothing is send back to the user as feedback. Explicitly catch certain types of
+    user error here, and provide 'help' feedback instead of silently failing.
+
+    This is a global error handler for all commands. Each command can also provide its own specific error handler.
+    """
+    if isinstance(error, commands.errors.BadArgument):
+        await ctx.send("I don't completely understand. Please see help doc in DM channel:")
+        await ctx.send_help(ctx.command)
+    else:
+        # If this listener doesn't exist, the Bot.on_command_error does this:
+        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
 
 @bot.event
@@ -136,9 +163,23 @@ async def count(ctx, total: int = None, item: str = None, variant: str = None):
     cond = df[COL_USER_ID] == user_id
     if not sum(cond):
         if total is None or not item or not variant:
-            await ctx.send('You have not recorded any item types yet. Please see "help count".')
+            await ctx.send('You have not recorded any item types yet. Please see "help count" doc in DM channel.')
             await ctx.send_help(bot.get_command('count'))
             return
+
+    item_name = ALIAS_MAPS.get(item.lower())
+    if not item_name:
+        await ctx.send("Item '{0}' in not something I know about.".format(item))
+        await ctx.send_help(ctx.command)
+        return
+
+    variant_name = ALIAS_MAPS.get(variant.lower())
+    if not variant_name:
+        await ctx.send("Variant '{0}' in not something I know about.".format(variant))
+        await ctx.send_help(ctx.command)
+        return
+
+
 
     txt = 'Hi {0}'.format(ctx.message.author.mention)
     await ctx.send(txt)
