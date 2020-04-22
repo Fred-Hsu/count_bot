@@ -11,7 +11,6 @@ NOTE: Discord.py isn't available as a Conda package it seems. So it is not speci
 """
 import discord
 import logging
-import random
 import pandas as pd
 from functools import lru_cache
 from discord.ext import commands
@@ -33,6 +32,12 @@ VARIANT_CHOICES = {
     'prusa':     ["PETG", "PLA"],
     'visor':     ["verkstan", "prusa"],
 }
+
+ALIAS_MAPS = {}
+for item, variants in VARIANT_CHOICES.items():
+    ALIAS_MAPS.update([(item[:i], item) for i in range(3, len(item))])
+    for variant in variants:
+        ALIAS_MAPS.update([(variant[:i], variant) for i in range(3, len(variant))])
 
 
 def fake_command_prefix_in_right_channel(_bot, message):
@@ -64,7 +69,7 @@ bot = commands.Bot(
     case_insensitive=True,  # No need to be draconian with case
     command_prefix=fake_command_prefix_in_right_channel,
     help_command=commands.DefaultHelpCommand(
-        no_category='Commands:',
+        no_category='Commands',
         dm_help=True,
     ),
 )
@@ -87,6 +92,12 @@ def get_inventory_channel():
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
 
 
+COL_USER_ID = 'user_id'
+COL_ITEM = 'item'
+COL_VARIANT = 'variant'
+COL_COUNT = 'count'
+
+
 @lru_cache()
 def get_inventory_df():
     """
@@ -94,18 +105,53 @@ def get_inventory_df():
     """
     # FIXME - troll through get_inventory_channel() to rebuild the dataframe.
     # Right now it returns only an empty DF.
-    column_names = ["user_id", "item", "variant", "count"]
-    return pd.DataFrame(columns = column_names)
+    column_names = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
+    df = pd.DataFrame(columns=column_names)
+    df.set_index(keys=COL_USER_ID)
+    return df
 
 
-@bot.command()
-async def count(ctx, total: int=None, item: str = None, variant: str = None):
-    """Update the current {total} count of an {item} of {variant} type under the possesion of the user."""
+@bot.command(
+    brief="Update the current count of items from a maker",
+    description='Update the current {total} count of an {item} of {variant} type from a maker:')
+async def count(ctx, total: int = None, item: str = None, variant: str = None):
+    """
+    Item and variant choices are shown below. Words are case-insensitive. You can also use aliases such as 'ver',
+    'verk', 'pru', 'pet' and 'vis', 'viso', etc. to refer to the the full item and variant names.
 
-    txt = '{0} did it'.format(ctx.message.author.mention)
+    Item        variant
+    --------------------
+    verkstan    PETG
+    verkstan    PLA
+    prusa       PETG
+    prusa       PLA
+    visor       verkstan
+    visor       prusa
+    """
+    df = get_inventory_df()
+    print(df)
+
+    user_id = ctx.message.author.id
+    # print(df.loc[user_id, [COL_ITEM, COL_VARIANT, COL_COUNT]])
+    cond = df[COL_USER_ID] == user_id
+    if not sum(cond):
+        if total is None or not item or not variant:
+            await ctx.send('You have not recorded any item types yet. Please see "help count".')
+            await ctx.send_help(bot.get_command('count'))
+            return
+
+    txt = 'Hi {0}'.format(ctx.message.author.mention)
     await ctx.send(txt)
 
 
+@bot.command(description='For when you wanna settle the score some other way')
+async def choose(ctx, *choices: str):
+    """Chooses between multiple choices."""
+    await ctx.send(choices[0])
+
+
+
+'''
 @bot.command()
 async def roll(ctx, dice: str):
     """Rolls a dice in NdN format."""
@@ -151,5 +197,6 @@ async def cool(ctx):
 async def _bot(ctx):
     """Is the bot cool?"""
     await ctx.send('Yes, the bot is cool.')
+'''
 
 bot.run(get_bot_token())
