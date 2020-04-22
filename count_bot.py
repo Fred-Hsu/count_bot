@@ -36,7 +36,7 @@ VARIANT_CHOICES = {
     'visor':     ["verkstan", "prusa"],
 }
 
-DEBUG_DISABLE_INVENTORY_POSTS = False  # Leave False for production run. Set to True to debug only in DM channel
+DEBUG_DISABLE_INVENTORY_POSTS = True  # Leave False for production run. Set to True to debug only in DM channel
 
 ALIAS_MAPS = {}
 
@@ -201,7 +201,9 @@ async def count(ctx, total: int = None, item: str = None, variant: str = None):
     if ctx.message.channel.type == discord.ChannelType.private:
         ch = get_inventory_channel()
 
-        if not DEBUG_DISABLE_INVENTORY_POSTS:
+        if DEBUG_DISABLE_INVENTORY_POSTS:
+            await ctx.send('DEBUG: inventory channel not posted')
+        else:
             await ch.send(txt + ' (from DM chat)')
 
     # Only update memory DF after we have persisted the message to the inventory channel.
