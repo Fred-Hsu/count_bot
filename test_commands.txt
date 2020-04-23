@@ -60,6 +60,15 @@ remove
 . Error - no more inventory records left
 remove
 
+. Recreate table
+count 12 verkstan petg
+count 3 pru pla
+count 23 verkstan pla
+count 100 viso prusa
+
+. Report totals from all users
+report
+
 
 
 

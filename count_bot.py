@@ -197,7 +197,7 @@ verkstan    PETG or PLA
 prusa       PETG or PLA
 visor       verkstan or prusa
 
-count - shortcut to print out items under your possession. Same as 'show'.
+count - shortcut to print out items under your possession. Same as 'report [user]'.
 count [total] - shortcut to update a single item you own.
 count [total] [item] - shortcut to update a single variant of an item type."""
 
@@ -211,7 +211,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     #
     # count
     # If you have already recorded items in the system before, you can use "count" without any arguments \
-    # to show items you have recorded. This usage is equivalent to the "show" command without arguments.
+    # to show items you have recorded. This usage is equivalent to the "report [user]".
     #
     # count [total]
     # If you only have one item in the system, you can keep updating its current count without re-specifying \
@@ -232,7 +232,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
             await ctx.send_help(bot.get_command('count'))
             return
         elif total is None:
-            # "count" without argument with existing inventory - same as "show" without args
+            # "count" without argument with existing inventory - same as "report [user]".
             result = df[cond]
             await _send_df_as_msg_to_user(ctx, result)
             return
@@ -290,7 +290,8 @@ count [total] [item] - shortcut to update a single variant of an item type."""
 async def remove(ctx, item: str = None, variant: str = None):
     """
 Items and variants are case-insensitive. You can also use aliases such as 'ver', 'verk', 'pru', 'pet' \
-and 'vis', 'viso', etc. to refer to the the full item and variant names.
+and 'vis', 'viso', etc. to refer to the the full item and variant names. To see your inventory records,
+type 'count'.
 
 remove - shortcut to remove the only item you have in the record.
 remove [item] - shortcut to update a single variant of an item type."""
@@ -360,6 +361,31 @@ remove [item] - shortcut to update a single variant of an item type."""
     # Only update memory DF after we have persisted the message to the inventory channel.
     df.drop((user_id, item, variant), inplace=True)
     await _send_df_as_msg_to_user(ctx, df)
+
+
+@bot.command(
+    brief="Report total inventory in the system (NOT FINISHED)",
+    description="Report inventory of items by all users, broken down by item, variant and user. (NOT FINISHED)")
+async def report(ctx, item: str = None, variant: str = None):
+    """
+'item' and 'variant' are optional. Use them to limit the types of items to report."""
+
+    print('Command: report {0} {1}'.format(item, variant))
+
+    df = get_inventory_df()
+    if not len(df):
+        await ctx.send('There are no records in the system yet.')
+        return
+
+# FIXME
+# convert user id to user name
+# handle limiting parameters
+# remove (NOT FINISHED) from help
+
+
+    repivoted = df.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
+    result = repivoted.loc[:, [COL_USER_ID, COL_COUNT]]
+    await ctx.send("```{0}```".format(repivoted.to_string(index=True)))
 
 
 bot.run(get_bot_token())
