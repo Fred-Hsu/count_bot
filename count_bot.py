@@ -221,7 +221,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     # If you only print one variant of an item in the system, you can update its current count without re-specifying \
     # the variant type.
 
-    print('Command: count {0} {1} {2}'.format(total, item, variant))
+    print('Command: count {0} {1} {2} ({3})'.format(total, item, variant, ctx.message.author.display_name))
     df = get_inventory_df()
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
@@ -281,7 +281,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     # If the bot crashes right here, it can always restore its previous state by trolling through the inventory
     # channel and all DM rooms, to find user commands it has not succesfully processed.
     df.loc[(user_id, item, variant)] = [user_id, item, variant, total]
-    await _send_df_as_msg_to_user(ctx, df)
+    await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)])
 
 
 @bot.command(
@@ -360,12 +360,26 @@ remove [item] - shortcut to update a single variant of an item type."""
 
     # Only update memory DF after we have persisted the message to the inventory channel.
     df.drop((user_id, item, variant), inplace=True)
-    await _send_df_as_msg_to_user(ctx, df)
+    await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)])
+
+
+async def _map_user_ids_to_display_names(ctx, df):
+    ids = df.user_id.unique()
+    map = {}
+    for id in ids:
+        for guild in bot.guilds:
+            member = guild.get_member(id)
+            if member:
+                map[id] = member.display_name
+                break
+    print(map)
+    print(df.replace(map))
+    return df.replace(map)
 
 
 @bot.command(
-    brief="Report total inventory in the system (NOT FINISHED)",
-    description="Report inventory of items by all users, broken down by item, variant and user. (NOT FINISHED)")
+    brief="Report total inventory in the system",
+    description="Report inventory of items by all users, broken down by item, variant and user.")
 async def report(ctx, item: str = None, variant: str = None):
     """
 'item' and 'variant' are optional. Use them to limit the types of items to report."""
@@ -377,13 +391,17 @@ async def report(ctx, item: str = None, variant: str = None):
         await ctx.send('There are no records in the system yet.')
         return
 
+    mapped = await _map_user_ids_to_display_names(ctx, df)
+
+
+
+
 # FIXME
-# convert user id to user name
 # handle limiting parameters
 # remove (NOT FINISHED) from help
 
 
-    repivoted = df.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
+    repivoted = mapped.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
     result = repivoted.loc[:, [COL_USER_ID, COL_COUNT]]
     await ctx.send("```{0}```".format(repivoted.to_string(index=True)))
 
