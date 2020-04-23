@@ -96,7 +96,7 @@ async def on_command_error(ctx, error):
     This is a global error handler for all commands. Each command can also provide its own specific error handler.
     """
     if isinstance(error, commands.errors.BadArgument):
-        await ctx.send("I don't completely understand. Please see help doc:")
+        await ctx.send("❌  I don't completely understand. See help.")
         await ctx.send_help(ctx.command)
     else:
         # If this listener doesn't exist, the Bot.on_command_error does this:
@@ -144,73 +144,137 @@ def get_inventory_df():
     return df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=False, verify_integrity=True, drop=False)
 
 
+async def _send_df_as_msg_to_user(ctx, df):
+    result = df.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT]]
+    await ctx.send("```{0}```".format(result.to_string(index=False)))
+
+
+async def _resolve_item_name(ctx, item):
+    item_name = ALIAS_MAPS.get(item.lower())
+    if not item_name:
+        await ctx.send("❌  Item '{0}' is not something I know about. See help.".format(item))
+        await ctx.send_help(ctx.command)
+        return None
+    return item_name
+
+
+async def _resolve_variant_name(ctx, variant):
+    variant_name = ALIAS_MAPS.get(variant.lower())
+    if not variant_name:
+        await ctx.send("❌  Variant '{0}' is not something I know about. See help.".format(variant))
+        await ctx.send_help(ctx.command)
+        return None
+    return variant_name
+
+
 @bot.command(
     brief="Update the current count of items from a maker",
     description='Update the current {total} count of an {item} of {variant} type from a maker:')
 async def count(ctx, total: int = None, item: str = None, variant: str = None):
     """
-    Item and variant choices are shown below. Words are case-insensitive.
-    You can also use aliases such as 'ver', 'verk', 'pru', 'pet'
-    and 'vis', 'viso', etc. to refer to the the full item and variant names.
+Item and variant choices are shown below. Words are case-insensitive. \
+You can also use aliases such as 'ver', 'verk', 'pru', 'pet' \
+and 'vis', 'viso', etc. to refer to the the full item and variant names. Item and variant choices:
 
-    Item        variant
-    --------------------
-    verkstan    PETG
-    verkstan    PLA
-    prusa       PETG
-    prusa       PLA
-    visor       verkstan
-    visor       prusa
+verkstan    PETG or PLA
+prusa       PETG or PLA
+visor       verkstan or prusa
 
-    If you have already recorded items in the system before, you can use "count" without any arguments
-    to show items you have recorded. This usage is equivalent to the "show" command without arguments.
-    """
+count - shortcut to print out items under your possession. Same as 'show'.
+count [total] - shortcut to update a single item you own.
+count [total] [item] - shortcut to update a single variant of this type."""
+
+    # The help doc is too long.... Once I figure out how to show collapsible text, resurrect these:
+    #
+    # item        variant
+    # --------------------
+    # verkstan    PETG or PLA
+    # prusa       PETG or PLA
+    # visor       verkstan or prusa
+    #
+    # count
+    # If you have already recorded items in the system before, you can use "count" without any arguments \
+    # to show items you have recorded. This usage is equivalent to the "show" command without arguments.
+    #
+    # count [total]
+    # If you only have one item in the system, you can keep updating its current count without re-specifying \
+    # the item type and the variant type.
+    #
+    # count [total] [item]
+    # If you only print one variant of an item in the system, you can update its current count without re-specifying \
+    # the variant type.
+
     df = get_inventory_df()
-    print( 'count command - current DF:')
+    print('Command: count {0} {1} {2}'.format(total, item, variant))
     print(df)
 
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
+    found_num = sum(cond)
     if total is None or not item or not variant:
-        if not sum(cond):
-            await ctx.send('You have not recorded any item types yet. Please see the "help count" doc:')
+        if not found_num:
+            await ctx.send('❌  You have not recorded any item types yet. See help.')
             await ctx.send_help(bot.get_command('count'))
             return
-        else:
+        elif total is None:
             # "count" without argument with existing inventory - same as "show" without args
             result = df[cond]
-            result = result.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT]]
-            await ctx.send("```{0}```".format(result.to_string(index=False)))
+            await _send_df_as_msg_to_user(ctx, result)
             return
+        else:
+            # The user is updating count without fully specifying both item and variant args.
+            # Either item is not provided, or both item and variant are not provided.
+            # Do a search to see if it is possible to narrow down recorded items to just one item.
+            if not item or not variant:
+                if item:
+                    # Variant is not specified.
+                    item = await _resolve_item_name(ctx, item)
+                    if not item:
+                        return
 
-    item_name = ALIAS_MAPS.get(item.lower())
-    if not item_name:
-        await ctx.send("Item '{0}' in not something I know about.".format(item))
-        await ctx.send_help(ctx.command)
+                    cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item)
+                    found_num = sum(cond)
+                    # Fall through
+
+                # No item nor variant are specified.
+                if found_num == 1:
+                    row = df[cond]
+                    item = row[COL_ITEM][0]
+                    variant = row[COL_VARIANT][0]
+                    # Fall through to normal code which updates the count
+                else:
+                    await ctx.send("❌  Found more than one types of items. Please be more specific. "
+                        "Or use 'reset count' to remove item types. See help.".format(item))
+                    await _send_df_as_msg_to_user(ctx, df[cond])
+                    await ctx.send_help(ctx.command)
+                    return
+
+    item = await _resolve_item_name(ctx, item)
+    if not item:
         return
 
-    variant_name = ALIAS_MAPS.get(variant.lower())
-    if not variant_name:
-        await ctx.send("Variant '{0}' in not something I know about.".format(variant))
-        await ctx.send_help(ctx.command)
+    variant = await _resolve_item_name(ctx, variant)
+    if not variant:
         return
 
-    txt = '{0}: {1} {2} {3}'.format(ctx.message.author.mention, total, item_name, variant_name)
-    await ctx.send(txt)
-    # If private DM channel, also post to inventory channel
+    txt = '{0}: {1} {2} {3}'.format(ctx.message.author.mention, total, item, variant)
     if ctx.message.channel.type == discord.ChannelType.private:
+        # If private DM channel, also post to inventory channel
         ch = get_inventory_channel()
 
         if DEBUG_DISABLE_INVENTORY_POSTS:
             await ctx.send('DEBUG: inventory channel not posted')
         else:
             await ch.send(txt + ' (from DM chat)')
+    else:
+        await ctx.send(txt)
 
     # Only update memory DF after we have persisted the message to the inventory channel.
     # Think of the inventory channel as "disk", the permanent store.
     # If the bot crashes right here, it can always restore its previous state by trolling through the inventory
     # channel and all DM rooms, to find user commands it has not succesfully processed.
-    df.loc[(user_id, item_name, variant_name)] = [user_id, item_name, variant_name, total]
+    df.loc[(user_id, item, variant)] = [user_id, item, variant, total]
+    await _send_df_as_msg_to_user(ctx, df)
 
 
 bot.run(get_bot_token())

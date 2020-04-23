@@ -1,7 +1,7 @@
 
 - Start with an empty DF
 
-. Errors
+. Errors - bad commands or table is empty
 count
 count wrong arg
 count 1
@@ -10,7 +10,36 @@ count 1 wrong wrong
 . Adding rows
 count 12 verkstan petg
 count
+
+. Updating rows without item name (only possible when one item exists based on filter criteria)
+count 14
+count 15 ver
+
+. Adding more rows
 count 3 pru pla
 count
-count 23 verkstan petg
+
+. Error - ambiguity in count update
+count 17
+
+. updating rows
+count 18 ver
+count 4 pru
+
+. Generate two variants
+count 23 verkstan pla
+
+. Error - ambiguity in count update
+count 18 ver
+
+. Updating rows
+count 33 verkstan petg
 count
+
+. Add the third item type
+count 100 viso prusa
+
+. Rest count to 0, but keep item
+count 0 prusa pla
+count
+
