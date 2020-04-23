@@ -145,8 +145,11 @@ def get_inventory_df():
 
 
 async def _send_df_as_msg_to_user(ctx, df):
-    result = df.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT]]
-    await ctx.send("```{0}```".format(result.to_string(index=False)))
+    if not len(df):
+        await ctx.send("```(no inventory records)```")
+    else:
+        result = df.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT]]
+        await ctx.send("```{0}```".format(result.to_string(index=False)))
 
 
 async def _resolve_item_name(ctx, item):
@@ -167,6 +170,20 @@ async def _resolve_variant_name(ctx, variant):
     return variant_name
 
 
+async def _post_transaction_log(ctx, trans_text):
+    if ctx.message.channel.type == discord.ChannelType.private:
+        await ctx.send("Command processed. Transaction posted to channel '{0}'.".format(INVENTORY_CHANNEL))
+        # If private DM channel, also post to inventory channel
+        ch = get_inventory_channel()
+        if DEBUG_DISABLE_INVENTORY_POSTS:
+            await ctx.send('DEBUG: redirecting inventory to this DM: ' + trans_text)
+        else:
+            await ch.send(trans_text + ' (from DM chat)')
+    else:
+        await ctx.send("Command processed.")
+        await ctx.send(trans_text)
+
+
 @bot.command(
     brief="Update the current count of items from a maker",
     description='Update the current {total} count of an {item} of {variant} type from a maker:')
@@ -182,7 +199,7 @@ visor       verkstan or prusa
 
 count - shortcut to print out items under your possession. Same as 'show'.
 count [total] - shortcut to update a single item you own.
-count [total] [item] - shortcut to update a single variant of this type."""
+count [total] [item] - shortcut to update a single variant of an item type."""
 
     # The help doc is too long.... Once I figure out how to show collapsible text, resurrect these:
     #
@@ -204,10 +221,8 @@ count [total] [item] - shortcut to update a single variant of this type."""
     # If you only print one variant of an item in the system, you can update its current count without re-specifying \
     # the variant type.
 
-    df = get_inventory_df()
     print('Command: count {0} {1} {2}'.format(total, item, variant))
-    print(df)
-
+    df = get_inventory_df()
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
     found_num = sum(cond)
@@ -238,6 +253,7 @@ count [total] [item] - shortcut to update a single variant of this type."""
 
                 # No item nor variant are specified.
                 if found_num == 1:
+                    # There is only one row in the record. Retrieve item and variant names from the single record.
                     row = df[cond]
                     item = row[COL_ITEM][0]
                     variant = row[COL_VARIANT][0]
@@ -258,22 +274,91 @@ count [total] [item] - shortcut to update a single variant of this type."""
         return
 
     txt = '{0}: {1} {2} {3}'.format(ctx.message.author.mention, total, item, variant)
-    if ctx.message.channel.type == discord.ChannelType.private:
-        # If private DM channel, also post to inventory channel
-        ch = get_inventory_channel()
-
-        if DEBUG_DISABLE_INVENTORY_POSTS:
-            await ctx.send('DEBUG: inventory channel not posted')
-        else:
-            await ch.send(txt + ' (from DM chat)')
-    else:
-        await ctx.send(txt)
+    await _post_transaction_log(ctx, txt)
 
     # Only update memory DF after we have persisted the message to the inventory channel.
     # Think of the inventory channel as "disk", the permanent store.
     # If the bot crashes right here, it can always restore its previous state by trolling through the inventory
     # channel and all DM rooms, to find user commands it has not succesfully processed.
     df.loc[(user_id, item, variant)] = [user_id, item, variant, total]
+    await _send_df_as_msg_to_user(ctx, df)
+
+
+@bot.command(
+    brief="Remove an item type from user's record",
+    description="Remove {item} of {variant} type from user's record:")
+async def remove(ctx, item: str = None, variant: str = None):
+    """
+Items and variants are case-insensitive. You can also use aliases such as 'ver', 'verk', 'pru', 'pet' \
+and 'vis', 'viso', etc. to refer to the the full item and variant names.
+
+remove - shortcut to remove the only item you have in the record.
+remove [item] - shortcut to update a single variant of an item type."""
+
+    print('Command: remove {0} {1}'.format(item, variant))
+    df = get_inventory_df()
+    user_id = ctx.message.author.id
+    cond = df[COL_USER_ID] == user_id
+    found_num = sum(cond)
+
+    if not found_num:
+        await ctx.send('❌  You have not recorded any item types. There is nothing to remove.')
+        return
+
+    if not item and not variant:
+        if found_num == 1:
+            # There is only one row in the record. Retrieve item and variant names from the single record.
+            row = df[cond]
+            item = row[COL_ITEM][0]
+            variant = row[COL_VARIANT][0]
+            # Fall through to normal code which updates the count
+        else:
+            await ctx.send("❌  Found more than one types of items. Please be more specific. See help.".format(item))
+            await _send_df_as_msg_to_user(ctx, df[cond])
+            await ctx.send_help(ctx.command)
+            return
+
+    if item and not variant:
+        # Variant is not specified.
+        item = await _resolve_item_name(ctx, item)
+        if not item:
+            return
+
+        cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item)
+        found_num = sum(cond)
+
+        if found_num == 1:
+            # There is only one row in the record. Retrieve item and variant names from the single record.
+            row = df[cond]
+            variant = row[COL_VARIANT][0]
+            # Fall through to normal code which updates the count
+        else:
+            await ctx.send("❌  Found more than one variant of items. Please be more specific. See help.".format(item))
+            await _send_df_as_msg_to_user(ctx, df[cond])
+            await ctx.send_help(ctx.command)
+            return
+
+    item = await _resolve_item_name(ctx, item)
+    if not item:
+        return
+
+    variant = await _resolve_item_name(ctx, variant)
+    if not variant:
+        return
+
+    cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item) & (df[COL_VARIANT] == variant)
+    row = df[cond]
+    if len(row) != 1:
+        txt = '❌  Internal error - got more than one row - this is not expected. Abort.'
+        print(txt)
+        await ctx.send(txt)
+        return
+
+    txt = '{0}: remove {1} {2}'.format(ctx.message.author.mention, item, variant)
+    await _post_transaction_log(ctx, txt)
+
+    # Only update memory DF after we have persisted the message to the inventory channel.
+    df.drop((user_id, item, variant), inplace=True)
     await _send_df_as_msg_to_user(ctx, df)
 
 

@@ -7,7 +7,7 @@ count wrong arg
 count 1
 count 1 wrong wrong
 
-. Adding rows
+. Adding first row
 count 12 verkstan petg
 count
 
@@ -15,7 +15,7 @@ count
 count 14
 count 15 ver
 
-. Adding more rows
+. Adding second row
 count 3 pru pla
 count
 
@@ -26,7 +26,7 @@ count 17
 count 18 ver
 count 4 pru
 
-. Generate two variants
+. Generate two variants (third row)
 count 23 verkstan pla
 
 . Error - ambiguity in count update
@@ -36,10 +36,30 @@ count 18 ver
 count 33 verkstan petg
 count
 
-. Add the third item type
+. Add the third item type (fourth row)
 count 100 viso prusa
 
 . Rest count to 0, but keep item
 count 0 prusa pla
 count
+
+. Error - ambiguity in removal
+remove
+remove verk
+
+. Remove one row with item name only (3 rows left)
+remove visor
+
+. remove two rows with both item name and variant (1 row left)
+remove prusa pla
+remove ver pet
+
+. remove last row with no item nor variant name
+remove
+
+. Error - no more inventory records left
+remove
+
+
+
 
