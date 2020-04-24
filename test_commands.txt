@@ -69,6 +69,15 @@ count 100 viso prusa
 . Report totals from all users
 report
 
+. Errors - Sudo
+sudo
+sudo notMember
+sudo Freddie count
 
+. Sudo - add 3 rows on behalf of justin
+sudo justin count 33 verkstan petg
+sudo justin count 4 pru pla
+sudo justin count 3 viso prusa
 
+report
 

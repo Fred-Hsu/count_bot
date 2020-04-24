@@ -95,7 +95,7 @@ async def on_command_error(ctx, error):
 
     This is a global error handler for all commands. Each command can also provide its own specific error handler.
     """
-    if isinstance(error, commands.errors.BadArgument):
+    if isinstance(error, (commands.errors.BadArgument, commands.errors.MissingRequiredArgument)):
         await ctx.send("❌  I don't completely understand. See help.")
         await ctx.send_help(ctx.command)
     else:
@@ -296,7 +296,7 @@ type 'count'.
 remove - shortcut to remove the only item you have in the record.
 remove [item] - shortcut to update a single variant of an item type."""
 
-    print('Command: remove {0} {1}'.format(item, variant))
+    print('Command: remove {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
     df = get_inventory_df()
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
@@ -372,8 +372,6 @@ async def _map_user_ids_to_display_names(ctx, df):
             if member:
                 map[id] = member.display_name
                 break
-    print(map)
-    print(df.replace(map))
     return df.replace(map)
 
 
@@ -384,7 +382,7 @@ async def report(ctx, item: str = None, variant: str = None):
     """
 'item' and 'variant' are optional. Use them to limit the types of items to report."""
 
-    print('Command: report {0} {1}'.format(item, variant))
+    print('Command: report {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
 
     df = get_inventory_df()
     if not len(df):
@@ -394,16 +392,41 @@ async def report(ctx, item: str = None, variant: str = None):
     mapped = await _map_user_ids_to_display_names(ctx, df)
 
 
+    # FIXME
+    # add sudo, so I can assume some other user
+
+    # FIXME
+    # handle limiting parameters
+    # remove (NOT FINISHED) from help
+
+    repivoted = mapped.set_index(keys=[COL_ITEM, COL_VARIANT, COL_USER_ID], drop=True)
+    sorted = repivoted.sort_index('index')
+    # Note that 'sparsify' works on all index columns, except for the very last index column.
+    await ctx.send("```{0}```".format(sorted.to_string(index=True, sparsify=True)))
 
 
-# FIXME
-# handle limiting parameters
-# remove (NOT FINISHED) from help
+@bot.command(
+    brief="Admin executing commands on behalf of a user",
+    description="Admin executing commands on behalf of a user")
+async def sudo(ctx, member: discord.Member, command: str, *args):
+    """
+Only admins can execute sudo. 'member' may be @alias (in the inventory room) or 'alias' alone (in DM channels).
+Incorrect spelling of 'alias' will cause the command to fail. Note that 'alias' is case-sensitive.
 
+sudo <member> count [total] [item] [variant]
+sudo <member> remove [item] [variant]
+"""
+    sudo_author = ctx.message.author
+    print('Command: sudo {0} {1} {2} ({3})'.format(member, command, args, sudo_author.display_name))
 
-    repivoted = mapped.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
-    result = repivoted.loc[:, [COL_USER_ID, COL_COUNT]]
-    await ctx.send("```{0}```".format(repivoted.to_string(index=True)))
+    if command not in ('count', 'remove'):
+        await ctx.send("❌  command '{0}' not supported by sudo".format(command))
+        return
+
+    ctx.message.author = member
+
+    cmd = bot.get_command(command)
+    await cmd(ctx, *args)
 
 
 bot.run(get_bot_token())
