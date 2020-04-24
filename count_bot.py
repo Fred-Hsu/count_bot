@@ -222,6 +222,11 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     # the variant type.
 
     print('Command: count {0} {1} {2} ({3})'.format(total, item, variant, ctx.message.author.display_name))
+
+    if isinstance(total, str):
+        # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
+        total = int(total)
+
     df = get_inventory_df()
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
@@ -301,6 +306,8 @@ remove [item] - shortcut to update a single variant of an item type."""
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
     found_num = sum(cond)
+
+    # FIXME - add 'remove all' to reset all items
 
     if not found_num:
         await ctx.send('❌  You have not recorded any item types. There is nothing to remove.')
@@ -391,18 +398,19 @@ async def report(ctx, item: str = None, variant: str = None):
 
     mapped = await _map_user_ids_to_display_names(ctx, df)
 
-
-    # FIXME
-    # add sudo, so I can assume some other user
-
     # FIXME
     # handle limiting parameters
     # remove (NOT FINISHED) from help
 
-    repivoted = mapped.set_index(keys=[COL_ITEM, COL_VARIANT, COL_USER_ID], drop=True)
-    sorted = repivoted.sort_index('index')
-    # Note that 'sparsify' works on all index columns, except for the very last index column.
-    await ctx.send("```{0}```".format(sorted.to_string(index=True, sparsify=True)))
+    renamed = mapped.rename(columns={COL_USER_ID: "user"})
+    repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
+    groups = repivoted.groupby([COL_ITEM, COL_VARIANT], sort=True)
+    for index, table in groups:
+        # Note that 'sparsify' works on all index columns, except for the very last index column.
+        ordered = table.sort_index('columns')
+        total = ordered[COL_COUNT].sum()
+        total_line = "{0} {1} = {2} TOTAL".format(index[0], index[1], total)
+        await ctx.send("```{0}\n{1}```".format(total_line, ordered.to_string(index=False)))
 
 
 @bot.command(
@@ -426,6 +434,8 @@ sudo <member> remove [item] [variant]
     ctx.message.author = member
 
     cmd = bot.get_command(command)
+    # Note that *args contains ALL strings. Integers will show up as string.
+    # This means that commands supported by 'sudo' must do explict conversion of int arguments, and the like.
     await cmd(ctx, *args)
 
 

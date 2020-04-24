@@ -81,3 +81,7 @@ sudo justin count 3 viso prusa
 
 report
 
+. Sudo - remove 1 row
+sudo justin remove verkstan petg
+
+report
