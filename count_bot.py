@@ -44,7 +44,7 @@ VARIANT_CHOICES = {
     'visor':     ["verkstan", "prusa"],
 }
 
-DEBUG_DISABLE_INVENTORY_POSTS = True  # Leave False for production run. Set to True to debug only in DM channel
+DEBUG_DISABLE_INVENTORY_POSTS = False  # Leave False for production run. Set to True to debug only in DM channel
 
 ALIAS_MAPS = {}
 
