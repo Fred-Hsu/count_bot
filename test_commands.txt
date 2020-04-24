@@ -81,6 +81,14 @@ sudo justin count 3 viso prusa
 
 report
 
+. Nothing to report
+report visor ver
+
+. Report specific tables
+report prusa
+report ver
+report ver pet
+
 . Sudo - remove 1 row
 sudo justin remove verkstan petg
 

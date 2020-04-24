@@ -396,11 +396,23 @@ async def report(ctx, item: str = None, variant: str = None):
         await ctx.send('There are no records in the system yet.')
         return
 
-    mapped = await _map_user_ids_to_display_names(ctx, df)
+    if item:
+        item = await _resolve_item_name(ctx, item)
+        if not item:
+            return
+        df = df[df[COL_ITEM] == item]
 
-    # FIXME
-    # handle limiting parameters
-    # remove (NOT FINISHED) from help
+    if variant:
+        variant = await _resolve_item_name(ctx, variant)
+        if not variant:
+            return
+        df = df[df[COL_VARIANT] == variant]
+
+    if not len(df):
+        await ctx.send('No records found for specified item/variant')
+        return
+
+    mapped = await _map_user_ids_to_display_names(ctx, df)
 
     renamed = mapped.rename(columns={COL_USER_ID: "user"})
     repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
