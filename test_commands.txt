@@ -98,3 +98,10 @@ report
 sudo justin remove all
 
 report
+
+. Special sudo commands
+sudo Freddie id
+sudo justin id
+sudo jds2001 id
+sudo maggotbrain id
+sudo timothyjryan id

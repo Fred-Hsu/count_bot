@@ -23,6 +23,14 @@ logging.basicConfig(level=logging.INFO)
 
 INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this text channel, or DM channels
 
+ADMINS = {
+    700184823628562482,  # Freddie
+    396106131845545984,  # justin
+    179806659231612928,  # jds2001
+    364951250346967040,  # maggotbrain
+    695092825368559686,  # timothyjryan
+}
+
 # Items are things that makers can print or build.
 ITEM_CHOICES = {
     'verkstan':  "3D Verkstan head band",
@@ -378,8 +386,7 @@ remove all - special command to wipe out all records of this user."""
     await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)])
 
 
-async def _map_user_ids_to_display_names(ctx, df):
-    ids = df.user_id.unique()
+async def _map_user_ids_to_display_names(ctx, ids):
     map = {}
     for id in ids:
         for guild in bot.guilds:
@@ -387,6 +394,12 @@ async def _map_user_ids_to_display_names(ctx, df):
             if member:
                 map[id] = member.display_name
                 break
+    return map
+
+
+async def _map_user_id_column_to_display_names(ctx, df):
+    ids = df.user_id.unique()
+    map = await _map_user_ids_to_display_names(ctx, ids)
     return df.replace(map)
 
 
@@ -420,7 +433,7 @@ async def report(ctx, item: str = None, variant: str = None):
         await ctx.send('No records found for specified item/variant')
         return
 
-    mapped = await _map_user_ids_to_display_names(ctx, df)
+    mapped = await _map_user_id_column_to_display_names(ctx, df)
 
     renamed = mapped.rename(columns={COL_USER_ID: "user"})
     repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
@@ -434,8 +447,21 @@ async def report(ctx, item: str = None, variant: str = None):
 
 
 @bot.command(
+    brief="List admins who wield superpower",
+    description="List admins who wield superpower.")
+async def admins(ctx):
+    """
+Only admins can execute sudo commands."""
+
+    map = await _map_user_ids_to_display_names(ctx, ADMINS)
+    names = sorted(map.values())
+    output = '  ' + '\n  '.join(names)
+    await ctx.send("```{0}```".format(output))
+
+
+@bot.command(
     brief="Admin executing commands on behalf of a user",
-    description="Admin executing commands on behalf of a user")
+    description="Admin executing commands on behalf of a user.")
 async def sudo(ctx, member: discord.Member, command: str, *args):
     """
 Only admins can execute sudo. 'member' may be @alias (in the inventory room) or 'alias' alone (in DM channels).
@@ -447,12 +473,21 @@ sudo <member> remove [item] [variant]
     sudo_author = ctx.message.author
     print('Command: sudo {0} {1} {2} ({3})'.format(member, command, args, sudo_author.display_name))
 
+    if sudo_author.id not in ADMINS:
+        await ctx.send("❌  You are not an admin. Please ask to be made an admin first.".format(command))
+        return
+
+    if command == 'id':
+        # Unadvertised 'sudo Freddie id' - return internal Discord user id
+        # Useful for adding admins
+        await ctx.send("{0}, # {1}".format(member.id, member.display_name))
+        return
+
     if command not in ('count', 'remove'):
         await ctx.send("❌  command '{0}' not supported by sudo".format(command))
         return
 
     ctx.message.author = member
-
     cmd = bot.get_command(command)
     # Note that *args contains ALL strings. Integers will show up as string.
     # This means that commands supported by 'sudo' must do explict conversion of int arguments, and the like.
