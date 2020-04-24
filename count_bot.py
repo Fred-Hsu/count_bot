@@ -299,7 +299,8 @@ and 'vis', 'viso', etc. to refer to the the full item and variant names. To see 
 type 'count'.
 
 remove - shortcut to remove the only item you have in the record.
-remove [item] - shortcut to update a single variant of an item type."""
+remove [item] - shortcut to update a single variant of an item type.
+remove all - special command to wipe out all records of this user."""
 
     print('Command: remove {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
     df = get_inventory_df()
@@ -307,10 +308,17 @@ remove [item] - shortcut to update a single variant of an item type."""
     cond = df[COL_USER_ID] == user_id
     found_num = sum(cond)
 
-    # FIXME - add 'remove all' to reset all items
-
     if not found_num:
         await ctx.send('❌  You have not recorded any item types. There is nothing to remove.')
+        return
+
+    if item == 'all':
+        txt = '{0}: remove all'.format(ctx.message.author.mention)
+        await _post_transaction_log(ctx, txt)
+
+        # Only update memory DF after we have persisted the message to the inventory channel.
+        df.drop((user_id), inplace=True)
+        await ctx.send('All your records have been removed')
         return
 
     if not item and not variant:

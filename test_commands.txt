@@ -93,3 +93,8 @@ report ver pet
 sudo justin remove verkstan petg
 
 report
+
+. Sudo - remove all remaining records from justin
+sudo justin remove all
+
+report
