@@ -466,7 +466,7 @@ sudo <member> remove [item] [variant]
 
     is_admin = await _user_has_role(sudo_author, ADMIN_ROLE_NAME)
     if not is_admin:
-        await ctx.send("❌  You are not an admin. Please ask to be made an admin first.".format(command))
+        await ctx.send("❌  You are not an admin. Please ask to be made an admin first.")
         return
 
     if command == 'id':
@@ -504,7 +504,7 @@ The argument [are] is always ignored. It's just there so you can ask:
     print('Command: who {0} {1} ({2})'.format(are, role, ctx.message.author.display_name))
 
     if role == 'you' or not role:
-        await ctx.send("Count Bot Johnny 5 at your service. Run by ({0}) with pid ({1})".format(
+        await ctx.send("Count Bot Johnny 5 at your service. ||Run by ({0}) with pid ({1})||".format(
             getpass.getuser(), os.getpid()))
 
     elif role == 'admins':
@@ -514,10 +514,35 @@ The argument [are] is always ignored. It's just there so you can ask:
         output = '  ' + '\n  '.join(names)
         await ctx.send("```{0}```".format(output))
 
+@bot.command(
+    brief="Admin instructs an extraneous bot to bow out",
+    description="Admin instructs an extraneous bot to bow out.")
+async def kamikaze(ctx, pid: int):
+    """
+Only admins can kill a bot. Use 'who are you' to find the pid of the right bot.
+"""
+    sudo_author = ctx.message.author
+    print('Command: kamikaze {0} ({1})'.format(pid, sudo_author.display_name))
+
+    is_admin = await _user_has_role(sudo_author, ADMIN_ROLE_NAME)
+    if not is_admin:
+        await ctx.send("❌  You are not an admin. Please ask to be made an admin first.")
+        return
+
+    if os.getpid() == pid:
+        await ctx.send("👋  So long, and thanks for all the fish.")
+        await bot.close()
+    # Do not respond to incorrect PIDs. The point of this command is to kill extraneous bots.
+    # Good bots do not need to respond at all.
+
+@bot.command()
+async def hello(ctx):
+    """Same as 'who are you'"""
+    print('Command: hello ({0})'.format(ctx.message.author.display_name))
+    cmd = bot.get_command('who')
+    await cmd(ctx, 'are', 'you')
 
 
-
-# FIXME - add a kill command to kill a bot. Must specify the process id of the bot. Only admin can run it
 
 # FIXME - add collectors.
 # people should be able to ask who the current collectors are.
