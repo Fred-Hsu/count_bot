@@ -13,7 +13,9 @@ import discord
 import logging
 import pandas as pd
 import sys
+import os
 import traceback
+import getpass
 
 from functools import lru_cache
 from discord.ext import commands
@@ -22,6 +24,7 @@ from my_tokens import get_bot_token
 logging.basicConfig(level=logging.INFO)
 
 INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this text channel, or DM channels
+ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 
 # FIXME - use actual Discord roles
 
@@ -46,7 +49,7 @@ VARIANT_CHOICES = {
     'visor':     ["verkstan", "prusa"],
 }
 
-DEBUG_DISABLE_INVENTORY_POSTS = False  # Leave False for production run. Set to True to debug only in DM channel
+DEBUG_DISABLE_INVENTORY_POSTS = True  # Leave False for production run. Set to True to debug only in DM channel
 
 ALIAS_MAPS = {}
 
@@ -181,6 +184,11 @@ async def _resolve_variant_name(ctx, variant):
 
 
 async def _post_transaction_log(ctx, trans_text):
+    # Only members of associated guilds can post transactions.
+    # This is the last line of defense against random users DM'ins the bot to cause DoS attacks.
+    if not isinstance(ctx.message.author, discord.Member):
+        raise RuntimeError('User "{0}" is not in guild, so cannot post to transaction log'.format(ctx.message.author))
+
     if ctx.message.channel.type == discord.ChannelType.private:
         await ctx.send("Command processed. Transaction posted to channel '{0}'.".format(INVENTORY_CHANNEL))
         # If private DM channel, also post to inventory channel
@@ -388,7 +396,21 @@ remove all - special command to wipe out all records of this user."""
     await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)])
 
 
-async def _map_user_ids_to_display_names(ctx, ids):
+async def _map_dm_user_to_member(user):
+    # If a 'user' comes from a DM channel, it has a "User" class, not associated to any guild nor roles.
+    # Otherwise, user is of "Member" class, with a list of associated roles.
+    if isinstance(user, discord.Member):
+        return user
+
+    for guild in bot.guilds:
+        member = guild.get_member(user.id)
+        if member:
+            return member
+    raise RuntimeError('User "{0}" not a member of my associated guild'.format(user))
+
+
+async def _map_user_ids_to_display_names(ids):
+    # If a user id isn't found to be associated to this guild, it will not be included in the returned map.
     map = {}
     for id in ids:
         for guild in bot.guilds:
@@ -399,9 +421,9 @@ async def _map_user_ids_to_display_names(ctx, ids):
     return map
 
 
-async def _map_user_id_column_to_display_names(ctx, df):
+async def _map_user_id_column_to_display_names(df):
     ids = df.user_id.unique()
-    map = await _map_user_ids_to_display_names(ctx, ids)
+    map = await _map_user_ids_to_display_names(ids)
     return df.replace(map)
 
 
@@ -435,7 +457,7 @@ async def report(ctx, item: str = None, variant: str = None):
         await ctx.send('No records found for specified item/variant')
         return
 
-    mapped = await _map_user_id_column_to_display_names(ctx, df)
+    mapped = await _map_user_id_column_to_display_names(df)
 
     renamed = mapped.rename(columns={COL_USER_ID: "user"})
     repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
@@ -448,17 +470,9 @@ async def report(ctx, item: str = None, variant: str = None):
         await ctx.send("```{0}\n{1}```".format(total_line, ordered.to_string(index=False)))
 
 
-@bot.command(
-    brief="List admins who wield superpower",
-    description="List admins who wield superpower.")
-async def admins(ctx):
-    """
-Only admins can execute sudo commands."""
-
-    map = await _map_user_ids_to_display_names(ctx, ADMINS)
-    names = sorted(map.values())
-    output = '  ' + '\n  '.join(names)
-    await ctx.send("```{0}```".format(output))
+async def _user_has_role(user, role_name):
+    member = await _map_dm_user_to_member(user)
+    return bool(discord.utils.get(member.roles, name=role_name))
 
 
 @bot.command(
@@ -475,7 +489,8 @@ sudo <member> remove [item] [variant]
     sudo_author = ctx.message.author
     print('Command: sudo {0} {1} {2} ({3})'.format(member, command, args, sudo_author.display_name))
 
-    if sudo_author.id not in ADMINS:
+    is_admin = await _user_has_role(sudo_author, ADMIN_ROLE_NAME)
+    if not is_admin:
         await ctx.send("❌  You are not an admin. Please ask to be made an admin first.".format(command))
         return
 
@@ -494,6 +509,42 @@ sudo <member> remove [item] [variant]
     # Note that *args contains ALL strings. Integers will show up as string.
     # This means that commands supported by 'sudo' must do explict conversion of int arguments, and the like.
     await cmd(ctx, *args)
+
+
+@bot.command(
+    brief="Find out who is serving what role",
+    description="Find out who is serving what role")
+async def who(ctx, are: str = None, role: str = None):
+    """
+The argument [are] is always ignored. It's just there so you can ask:
+  who are you - useful for finding zombie bots that continue to haunt this server
+  who are admins - find out who can run sudo commands, known as botadmins
+  who - find out who's who in general
+"""
+    print('Command: who {0} {1} ({2})'.format(are, role, ctx.message.author.display_name))
+
+    if role == 'you' or not role:
+        await ctx.send("Count Bot Johnny 5 at your service. Run by ({0}) with pid ({1})".format(
+            getpass.getuser(), os.getpid()))
+
+
+@bot.command(
+    brief="List admins who wield superpower",
+    description="List admins who wield superpower.")
+async def admins(ctx):
+    """
+Only admins can execute sudo commands."""
+
+    map = await _map_user_ids_to_display_names(ADMINS)
+    names = sorted(map.values())
+    output = '  ' + '\n  '.join(names)
+    await ctx.send("```{0}```".format(output))
+
+    # FIXME - remove when 'who are admins' is implemented
+
+
+
+# FIXME - add a kill command to kill a bot. Must specify the process id of the bot. Only admin can run it
 
 # FIXME - add collectors.
 # people should be able to ask who the current collectors are.
