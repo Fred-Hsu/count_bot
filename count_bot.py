@@ -161,20 +161,20 @@ async def _resolve_variant_name(ctx, variant):
 async def _post_transaction_log(ctx, trans_text):
     # Only members of associated guilds can post transactions.
     # This is the last line of defense against random users DM'ins the bot to cause DoS attacks.
-    if not isinstance(ctx.message.author, discord.Member):
-        raise RuntimeError('User "{0}" is not in guild, so cannot post to transaction log'.format(ctx.message.author))
+    # The function will raise exception of user is not in the guild.
+    await _map_dm_user_to_member(ctx.message.author)
 
     if ctx.message.channel.type == discord.ChannelType.private:
         await ctx.send("Command processed. Transaction posted to channel '{0}'.".format(INVENTORY_CHANNEL))
         # If private DM channel, also post to inventory channel
         ch = get_inventory_channel()
         if DEBUG_DISABLE_INVENTORY_POSTS:
-            await ctx.send('DEBUG: redirecting inventory to this DM: ' + trans_text)
+            await ctx.send('DEBUG: record in DM: ✅ ' + trans_text)
         else:
-            await ch.send(trans_text + ' (from DM chat)')
+            await ch.send('✅ ' + trans_text + ' (from DM chat)')
     else:
         await ctx.send("Command processed.")
-        await ctx.send(trans_text)
+        await ctx.send('✅ ' + trans_text)
 
 @bot.command(
     brief="Update the current count of items from a maker",
