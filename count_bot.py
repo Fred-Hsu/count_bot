@@ -42,17 +42,12 @@ VARIANT_CHOICES = {
 DEBUG_DISABLE_INVENTORY_POSTS = True  # Leave False for production run. Set to True to debug only in DM channel
 
 ALIAS_MAPS = {}
-
-
 def _setup_aliases():
     for item, variants in VARIANT_CHOICES.items():
         ALIAS_MAPS.update([(item[:i].lower(), item) for i in range(3, len(item)+1)])
         for variant in variants:
             ALIAS_MAPS.update([(variant[:i].lower(), variant) for i in range(3, len(variant)+1)])
-
-
 _setup_aliases()
-
 
 def fake_command_prefix_in_right_channel(_bot, message):
     """
@@ -72,7 +67,6 @@ def fake_command_prefix_in_right_channel(_bot, message):
         return ''
     return '#fake-prefix-no-one-uses#'
 
-
 description = '''Keep count of current numbers of face shields in each person's possession until the next drop. ''' \
     '''You can talk to this bot in a direct message (DM) channel, or the assigned '{0}' channel. ''' \
     '''Help commands that generate too much output get redirected to your DM channel.''' \
@@ -87,7 +81,6 @@ bot = commands.Bot(
         dm_help=False,   # TODO - change this to True to redirect help text that are too long to user's own DM channels?
     ),
 )
-
 
 @bot.listen()
 async def on_command_error(ctx, error):
@@ -106,14 +99,12 @@ async def on_command_error(ctx, error):
         print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
         traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
-
 @bot.event
 async def on_ready():
     print('Logged in as')
     print(bot.user.name)
     print(bot.user.id)
     print('------')
-
 
 @lru_cache()
 def get_inventory_channel():
@@ -123,12 +114,10 @@ def get_inventory_channel():
             return ch
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
 
-
 COL_USER_ID = 'user_id'
 COL_ITEM = 'item'
 COL_VARIANT = 'variant'
 COL_COUNT = 'count'
-
 
 @lru_cache()
 def get_inventory_df():
@@ -146,14 +135,12 @@ def get_inventory_df():
     df = pd.DataFrame(dummy_data, columns=column_names)
     return df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=False, verify_integrity=True, drop=False)
 
-
 async def _send_df_as_msg_to_user(ctx, df):
     if not len(df):
         await ctx.send("```(no inventory records)```")
     else:
         result = df.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT]]
         await ctx.send("```{0}```".format(result.to_string(index=False)))
-
 
 async def _resolve_item_name(ctx, item):
     item_name = ALIAS_MAPS.get(item.lower())
@@ -163,7 +150,6 @@ async def _resolve_item_name(ctx, item):
         return None
     return item_name
 
-
 async def _resolve_variant_name(ctx, variant):
     variant_name = ALIAS_MAPS.get(variant.lower())
     if not variant_name:
@@ -171,7 +157,6 @@ async def _resolve_variant_name(ctx, variant):
         await ctx.send_help(ctx.command)
         return None
     return variant_name
-
 
 async def _post_transaction_log(ctx, trans_text):
     # Only members of associated guilds can post transactions.
@@ -190,7 +175,6 @@ async def _post_transaction_log(ctx, trans_text):
     else:
         await ctx.send("Command processed.")
         await ctx.send(trans_text)
-
 
 @bot.command(
     brief="Update the current count of items from a maker",
@@ -296,7 +280,6 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     df.loc[(user_id, item, variant)] = [user_id, item, variant, total]
     await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)])
 
-
 @bot.command(
     brief="Remove an item type from user's record",
     description="Remove {item} of {variant} type from user's record:")
@@ -385,13 +368,11 @@ remove all - special command to wipe out all records of this user."""
     df.drop((user_id, item, variant), inplace=True)
     await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)])
 
-
 def _get_first_guild():
     # This bot can't be run in more than one guild (server), otherwise it gets really screwed up.
     if len(bot.guilds) > 1:
         raise RuntimeError('This bot can server only one server/guild. Found "{0}"'.format(len(bot.guilds)))
     return bot.guilds[0]
-
 
 async def _map_dm_user_to_member(user):
     # If a 'user' comes from a DM channel, it has a "User" class, not associated to any guild nor roles.
@@ -408,7 +389,6 @@ async def _map_dm_user_to_member(user):
 
     raise RuntimeError('Unexpected type for "{0}"'.format(user))
 
-
 async def _map_user_ids_to_display_names(ids):
     # If a user id isn't found to be associated to this guild, it will not be included in the returned map.
     guild = _get_first_guild()
@@ -419,12 +399,10 @@ async def _map_user_ids_to_display_names(ids):
             mapped[id] = member.display_name
     return mapped
 
-
 async def _map_user_id_column_to_display_names(df):
     ids = df.user_id.unique()
     mapped = await _map_user_ids_to_display_names(ids)
     return df.replace(mapped)
-
 
 @bot.command(
     brief="Report total inventory in the system",
@@ -468,11 +446,9 @@ async def report(ctx, item: str = None, variant: str = None):
         total_line = "{0} {1} = {2} TOTAL".format(index[0], index[1], total)
         await ctx.send("```{0}\n{1}```".format(total_line, ordered.to_string(index=False)))
 
-
 async def _user_has_role(user, role_name):
     member = await _map_dm_user_to_member(user)
     return bool(discord.utils.get(member.roles, name=role_name))
-
 
 @bot.command(
     brief="Admin executing commands on behalf of a user",
@@ -509,13 +485,11 @@ sudo <member> remove [item] [variant]
     # This means that commands supported by 'sudo' must do explict conversion of int arguments, and the like.
     await cmd(ctx, *args)
 
-
 def _get_role_by_name(role_name):
     for role in _get_first_guild().roles:
         if role.name == role_name:
             return role
     raise RuntimeError('Role name "{0}" not found in the associated server/guild'.format(role_name))
-
 
 @bot.command(
     brief="Find out who is serving what role",
@@ -547,6 +521,5 @@ The argument [are] is always ignored. It's just there so you can ask:
 
 # FIXME - add collectors.
 # people should be able to ask who the current collectors are.
-
 
 bot.run(get_bot_token())
