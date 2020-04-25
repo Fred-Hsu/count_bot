@@ -519,7 +519,7 @@ The argument [are] is always ignored. It's just there so you can ask:
     description="Admin instructs an extraneous bot to bow out.")
 async def kamikaze(ctx, pid: int):
     """
-Only admins can kill a bot. Use 'who are you' to find the pid of the right bot.
+Only admins can kill a bot. Use 'who are you' to find the pid of the right bot in the spoiler text.
 """
     sudo_author = ctx.message.author
     print('Command: kamikaze {0} ({1})'.format(pid, sudo_author.display_name))

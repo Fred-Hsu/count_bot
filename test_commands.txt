@@ -110,3 +110,10 @@ sudo timothyjryan id
 who are you
 who are admins
 who
+hello
+
+. Error - Kill the bot - need to provide a correct pid
+kamikazi
+kamikazi 123
+
+
