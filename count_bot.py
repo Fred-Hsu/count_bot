@@ -493,5 +493,7 @@ sudo <member> remove [item] [variant]
     # This means that commands supported by 'sudo' must do explict conversion of int arguments, and the like.
     await cmd(ctx, *args)
 
+# FIXME - add collectors.
+
 
 bot.run(get_bot_token())
