@@ -26,16 +26,6 @@ logging.basicConfig(level=logging.INFO)
 INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this text channel, or DM channels
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 
-# FIXME - use actual Discord roles
-
-ADMINS = {
-    700184823628562482,  # Freddie
-    396106131845545984,  # justin
-    179806659231612928,  # jds2001
-    364951250346967040,  # maggotbrain
-    695092825368559686,  # timothyjryan
-}
-
 # Items are things that makers can print or build.
 ITEM_CHOICES = {
     'verkstan':  "3D Verkstan head band",
@@ -396,35 +386,44 @@ remove all - special command to wipe out all records of this user."""
     await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)])
 
 
+def _get_first_guild():
+    # This bot can't be run in more than one guild (server), otherwise it gets really screwed up.
+    if len(bot.guilds) > 1:
+        raise RuntimeError('This bot can server only one server/guild. Found "{0}"'.format(len(bot.guilds)))
+    return bot.guilds[0]
+
+
 async def _map_dm_user_to_member(user):
     # If a 'user' comes from a DM channel, it has a "User" class, not associated to any guild nor roles.
     # Otherwise, user is of "Member" class, with a list of associated roles.
     if isinstance(user, discord.Member):
         return user
 
-    for guild in bot.guilds:
+    if isinstance(user, discord.User):
+        guild = _get_first_guild()
         member = guild.get_member(user.id)
         if member:
             return member
-    raise RuntimeError('User "{0}" not a member of my associated guild'.format(user))
+        raise RuntimeError('User "{0}" not a member of my associated guild'.format(user))
+
+    raise RuntimeError('Unexpected type for "{0}"'.format(user))
 
 
 async def _map_user_ids_to_display_names(ids):
     # If a user id isn't found to be associated to this guild, it will not be included in the returned map.
-    map = {}
+    guild = _get_first_guild()
+    mapped = {}
     for id in ids:
-        for guild in bot.guilds:
-            member = guild.get_member(id)
-            if member:
-                map[id] = member.display_name
-                break
-    return map
+        member = guild.get_member(id)
+        if member:
+            mapped[id] = member.display_name
+    return mapped
 
 
 async def _map_user_id_column_to_display_names(df):
     ids = df.user_id.unique()
-    map = await _map_user_ids_to_display_names(ids)
-    return df.replace(map)
+    mapped = await _map_user_ids_to_display_names(ids)
+    return df.replace(mapped)
 
 
 @bot.command(
@@ -511,6 +510,13 @@ sudo <member> remove [item] [variant]
     await cmd(ctx, *args)
 
 
+def _get_role_by_name(role_name):
+    for role in _get_first_guild().roles:
+        if role.name == role_name:
+            return role
+    raise RuntimeError('Role name "{0}" not found in the associated server/guild'.format(role_name))
+
+
 @bot.command(
     brief="Find out who is serving what role",
     description="Find out who is serving what role")
@@ -518,8 +524,8 @@ async def who(ctx, are: str = None, role: str = None):
     """
 The argument [are] is always ignored. It's just there so you can ask:
   who are you - useful for finding zombie bots that continue to haunt this server
+  who - same as "who are you"
   who are admins - find out who can run sudo commands, known as botadmins
-  who - find out who's who in general
 """
     print('Command: who {0} {1} ({2})'.format(are, role, ctx.message.author.display_name))
 
@@ -527,20 +533,13 @@ The argument [are] is always ignored. It's just there so you can ask:
         await ctx.send("Count Bot Johnny 5 at your service. Run by ({0}) with pid ({1})".format(
             getpass.getuser(), os.getpid()))
 
+    elif role == 'admins':
+        role = _get_role_by_name(ADMIN_ROLE_NAME)
+        members = role.members
+        names = sorted([member.display_name for member in members])
+        output = '  ' + '\n  '.join(names)
+        await ctx.send("```{0}```".format(output))
 
-@bot.command(
-    brief="List admins who wield superpower",
-    description="List admins who wield superpower.")
-async def admins(ctx):
-    """
-Only admins can execute sudo commands."""
-
-    map = await _map_user_ids_to_display_names(ADMINS)
-    names = sorted(map.values())
-    output = '  ' + '\n  '.join(names)
-    await ctx.send("```{0}```".format(output))
-
-    # FIXME - remove when 'who are admins' is implemented
 
 
 

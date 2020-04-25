@@ -105,3 +105,8 @@ sudo justin id
 sudo jds2001 id
 sudo maggotbrain id
 sudo timothyjryan id
+
+. Find out about roles
+who are you
+who are admins
+who
