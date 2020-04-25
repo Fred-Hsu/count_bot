@@ -23,6 +23,8 @@ logging.basicConfig(level=logging.INFO)
 
 INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this text channel, or DM channels
 
+# FIXME - use actual Discord roles
+
 ADMINS = {
     700184823628562482,  # Freddie
     396106131845545984,  # justin
@@ -494,6 +496,7 @@ sudo <member> remove [item] [variant]
     await cmd(ctx, *args)
 
 # FIXME - add collectors.
+# people should be able to ask who the current collectors are.
 
 
 bot.run(get_bot_token())
