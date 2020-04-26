@@ -356,13 +356,30 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)])
 
 @bot.command(
+    brief="Same as 'count 0'")
+async def reset(ctx, item: str = None, variant: str = None):
+    """
+    Reset the count of an item to 0. This is basically an alias for 'count 0'. \
+    'Reset' is not the same as 'remove'. Use 'reset' after a drop to reset your count, \
+    so you can print more and update the count later. 'Remove' on the other hand will \
+    remove the item, indicating that you do not plan to print more of that item type.
+
+    reset -> count 0
+    reset prusa -> count 0 prusa
+    reset prusa PETG -> count 0 prusa PETG
+    """
+    print('Command: reset {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
+    cmd = bot.get_command('count')
+    await cmd(ctx, 0, item, variant)
+
+@bot.command(
     brief="Remove an item type from user's record",
     description="Remove {item} of {variant} type from user's record:")
 async def remove(ctx, item: str = None, variant: str = None):
     """
 Items and variants are case-insensitive. You can also use aliases such as 'ver', 'verk', 'pru', 'pet' \
 and 'vis', 'viso', etc. to refer to the the full item and variant names. To see your inventory records, \
-type 'count'.
+type 'count'. 'Remove' is not the same as 'reset'. Use 'remove' when you no longer print a certain item.
 
 remove - shortcut to remove the only item you have in the record.
 remove [item] - shortcut to update a single variant of an item type.
@@ -529,7 +546,7 @@ from the inventory channel or DM channel."""
         total = ordered[COL_COUNT].sum()
         total_line = "{0} {1} = {2} TOTAL".format(index[0], index[1], total)
 
-        for_DM.append("```{0}\n{1}```".format(total_line, ordered.to_string(index=False)))
+        for_DM.append("```{0}\n{1}```".format(total_line, ordered.to_string(index=False, header=False)))
         for_inventory.append(total_line)
 
     if ctx.message.channel.type == discord.ChannelType.private and not DEBUG_PRETEND_DM_IS_INVENTORY:
@@ -637,8 +654,6 @@ async def hello(ctx):
     print('Command: hello ({0})'.format(ctx.message.author.display_name))
     cmd = bot.get_command('who')
     await cmd(ctx, 'are', 'you')
-
-
 
 # FIXME - add collectors.
 # people should be able to ask who the current collectors are.
