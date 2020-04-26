@@ -294,9 +294,9 @@ verkstan    PETG or PLA
 prusa       PETG or PLA
 visor       verkstan or prusa
 
-count - shortcut to print out items under your possession. Same as 'report [user]'.
-count [total] - shortcut to update a single item you own.
-count [total] [item] - shortcut to update a single variant of an item type."""
+count - shortcut to print out items under your possession.'.
+count 20 - shortcut to update a single item you make, to a total count of 20.
+count 20 prusa - shortcut to update a single variant of prusa shield you make."""
 
     # The help doc is too long.... Once I figure out how to show collapsible text, resurrect these:
     #
@@ -308,7 +308,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     #
     # count
     # If you have already recorded items in the system before, you can use "count" without any arguments \
-    # to show items you have recorded. This usage is equivalent to the "report [user]".
+    # to show items you have recorded.
     #
     # count [total]
     # If you only have one item in the system, you can keep updating its current count without re-specifying \
@@ -319,6 +319,10 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     # the variant type.
 
     print('Command: count {0} {1} {2} ({3})'.format(total, item, variant, ctx.message.author.display_name))
+    await _count(ctx, total, item, variant)
+
+async def _count(ctx, total: int = None, item: str = None, variant: str = None, delta: bool = False):
+    """Internal implementation of count, add and reset."""
 
     if isinstance(total, str):
         # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
@@ -331,10 +335,10 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     if total is None or not item or not variant:
         if not found_num:
             await ctx.send('❌  You have not recorded any item types yet. See help.')
-            await ctx.send_help(bot.get_command('count'))
+            await ctx.send_help(ctx.command)
             return
         elif total is None:
-            # "count" without argument with existing inventory - same as "report [user]".
+            # "count" without argument with existing inventory.
             result = df[cond]
             await _send_df_as_msg_to_user(ctx, result)
             return
@@ -362,7 +366,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
                     # Fall through to normal code which updates the count
                 else:
                     await ctx.send("❌  Found more than one types of items. Please be more specific. "
-                        "Or use 'reset count' to remove item types. See help.".format(item))
+                        "Or use 'reset' to remove item types. See help.".format(item))
                     await _send_df_as_msg_to_user(ctx, df[cond])
                     await ctx.send_help(ctx.command)
                     return
@@ -374,6 +378,14 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     variant = await _resolve_item_name(ctx, variant)
     if not variant:
         return
+
+    if delta:
+        # this is not an update of current count, but a delta addition to current count.
+        cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item) & (df[COL_VARIANT] == variant)
+        rows = df[cond]
+        if len(rows) == 1:
+            row = rows.iloc[0]
+            total += row[COL_COUNT]
 
     txt = '{0}: count {1} {2} {3}'.format(ctx.message.author.mention, total, item, variant)
     await _post_user_count_to_trans_log(ctx, txt)
@@ -399,8 +411,21 @@ async def reset(ctx, item: str = None, variant: str = None):
     reset prusa PETG -> count 0 prusa PETG
     """
     print('Command: reset {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
-    cmd = bot.get_command('count')
-    await cmd(ctx, 0, item, variant)
+    await _count(ctx, 0, item, variant)
+
+@bot.command(
+    brief="Similar to 'count', but it adds instead of updating count",
+    description="Add n items to the current count of item/variant from a maker:")
+async def add(ctx, num: int = None, item: str = None, variant: str = None):
+    """
+    See 'help count' for descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
+
+    add - shortcut to show items you make. Same as 'count' without arguments.
+    add 20 - shortcut to add 20 to the running count of a single item you make.
+    add 20 prusa - add 20 to current count of a single variant of prusa shield.
+    """
+    print('Command: add {0} {1} {2} ({3})'.format(num, item, variant, ctx.message.author.display_name))
+    await _count(ctx, num, item, variant, delta=True)
 
 @bot.command(
     brief="Remove an item type from user's record",
@@ -476,8 +501,8 @@ remove all - special command to wipe out all records of this user."""
         return
 
     cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item) & (df[COL_VARIANT] == variant)
-    row = df[cond]
-    if len(row) != 1:
+    rows = df[cond]
+    if len(rows) != 1:
         txt = '❌  Internal error - got more than one row - this is not expected. Abort.'
         print(txt)
         await ctx.send(txt)

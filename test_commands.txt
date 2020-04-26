@@ -116,4 +116,17 @@ hello
 kamikazi
 kamikazi 123
 
+. Error - ambiguity
+reset
+
+. Reset one row
+reset viso prusa
+
+. Error - ambiguity
+add 1
+
+. Add instead of updating count
+add
+add 1 prusa
+add 2 ver pla
 
