@@ -17,6 +17,7 @@ import os
 import traceback
 import getpass
 
+from pprint import pprint
 from functools import lru_cache
 from discord.ext import commands
 from my_tokens import get_bot_token
@@ -49,7 +50,7 @@ def _setup_aliases():
             ALIAS_MAPS.update([(variant[:i].lower(), variant) for i in range(3, len(variant)+1)])
 _setup_aliases()
 
-def fake_command_prefix_in_right_channel(_bot, message):
+def _fake_command_prefix_in_right_channel(_bot, message):
     """
     This is really pathetic. All "Checks" (command-specific or global) operate on the raise-an-exception basis.
     If I want use Checks to prevent this bot from responding to all channels except for DM and inventory channels,
@@ -75,7 +76,7 @@ description = '''Keep count of current numbers of face shields in each person's 
 bot = commands.Bot(
     description=description,
     case_insensitive=True,  # No need to be draconian with case
-    command_prefix=fake_command_prefix_in_right_channel,
+    command_prefix=_fake_command_prefix_in_right_channel,
     help_command=commands.DefaultHelpCommand(
         no_category='Commands',
         dm_help=False,   # TODO - change this to True to redirect help text that are too long to user's own DM channels?
@@ -104,10 +105,12 @@ async def on_ready():
     print('Logged in as')
     print(bot.user.name)
     print(bot.user.id)
-    print('------')
+    print('---- retrieving inventory from log')
+    await _retrieve_inventory_df_from_transaction_log()
+    print('---- ready')
 
 @lru_cache()
-def get_inventory_channel():
+def _get_inventory_channel():
     """Find the right inventory channel model"""
     for ch in bot.get_all_channels():
         if ch.name == INVENTORY_CHANNEL:
@@ -119,21 +122,70 @@ COL_ITEM = 'item'
 COL_VARIANT = 'variant'
 COL_COUNT = 'count'
 
-@lru_cache()
-def get_inventory_df():
+inventory_df = pd.DataFrame()  # type: pd.DataFrame
+
+async def _retrieve_inventory_df_from_transaction_log():
     """
-    Troll through inventory channel's message records to rebuilt our memory inventory dataframe.
+    Troll through inventory channel's message records to find all relevant transactions until we hit a sync point.
+    Use these to rebuild in memory the inventory dataframe.
     """
-    # FIXME - troll through get_inventory_channel() to rebuild the dataframe.
-    # Right now it returns only an empty DF.
-    # dummy_data = [
-    #     ['123', 'prusa', 'PETG', 3],
-    # ]
-    dummy_data = []
+    ch = _get_inventory_channel()
+
+    # This tracks the last action performed by a user on an item + variant.
+    # Only the last action of said tuple is used to rebuild the inventory.
+    # Any previous action by the user on said tuple are ignored.
+    last_action = {}
+
+    # FIXME - temporary sync point generator
+    # await ch.send('✅ ' + ": sync point")
+
+    # Channel history is returned in reverse chronological order.
+    # Troll through these entries and process only transaction log-type messages posted by the bot itself.
+    async for msg in ch.history():
+        text = msg.content
+
+        if msg.author != bot.user:
+            continue
+        if not text.startswith('✅ '):
+            continue
+
+        # FIXME fake sync point for now
+        if text.endswith('sync point'):
+            print("{:60} sync point - stop trolling".format(text))
+            break
+
+        if msg.mentions:
+            # Messages with mentions are records created in response to a user action
+            member = msg.mentions[0]
+            head, item, variant = text.rsplit(maxsplit=2)
+            _garbage, command_head = head.split(':')
+            key = (member.id, item, variant)
+            if last_action.get(key):
+                print("{:60} {}".format(text, 'superseded'))
+                continue
+            else:
+                command_head = command_head.strip()
+                if command_head.startswith('remove'):
+                    last_action[key] = None
+                elif command_head.startswith('count'):
+                    parts = command_head.split()
+                    last_action[key] = int(parts[1])
+                    print("{:60} {}".format(text, command_head))
+
+    rows = []
+    for (user_id, item, variant), count in last_action.items():
+        if count is not None:
+            rows.append((user_id, item, variant, count))
+
+    print('  --- rebuilt inventory --')
+    pprint(rows)
 
     column_names = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
-    df = pd.DataFrame(dummy_data, columns=column_names)
-    return df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=False, verify_integrity=True, drop=False)
+    df = pd.DataFrame(rows, columns=column_names)
+    df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
+
+    global inventory_df
+    inventory_df = df
 
 async def _send_df_as_msg_to_user(ctx, df):
     if not len(df):
@@ -159,6 +211,11 @@ async def _resolve_variant_name(ctx, variant):
     return variant_name
 
 async def _post_transaction_log(ctx, trans_text):
+    """
+    All valid transactions must begin with '✅ '.
+    Do not post transaction messages without calling this function.
+    """
+
     # Only members of associated guilds can post transactions.
     # This is the last line of defense against random users DM'ins the bot to cause DoS attacks.
     # The function will raise exception of user is not in the guild.
@@ -167,7 +224,7 @@ async def _post_transaction_log(ctx, trans_text):
     if ctx.message.channel.type == discord.ChannelType.private:
         await ctx.send("Command processed. Transaction posted to channel '{0}'.".format(INVENTORY_CHANNEL))
         # If private DM channel, also post to inventory channel
-        ch = get_inventory_channel()
+        ch = _get_inventory_channel()
         if DEBUG_DISABLE_INVENTORY_POSTS:
             await ctx.send('DEBUG: record in DM: ✅ ' + trans_text)
         else:
@@ -219,7 +276,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
         # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
         total = int(total)
 
-    df = get_inventory_df()
+    df = inventory_df
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
     found_num = sum(cond)
@@ -270,7 +327,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
     if not variant:
         return
 
-    txt = '{0}: {1} {2} {3}'.format(ctx.message.author.mention, total, item, variant)
+    txt = '{0}: count {1} {2} {3}'.format(ctx.message.author.mention, total, item, variant)
     await _post_transaction_log(ctx, txt)
 
     # Only update memory DF after we have persisted the message to the inventory channel.
@@ -294,7 +351,7 @@ remove [item] - shortcut to update a single variant of an item type.
 remove all - special command to wipe out all records of this user."""
 
     print('Command: remove {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
-    df = get_inventory_df()
+    df = inventory_df
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
     found_num = sum(cond)
@@ -413,7 +470,7 @@ async def report(ctx, item: str = None, variant: str = None):
 
     print('Command: report {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
 
-    df = get_inventory_df()
+    df = inventory_df
     if not len(df):
         await ctx.send('There are no records in the system yet.')
         return
