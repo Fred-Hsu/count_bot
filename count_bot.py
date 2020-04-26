@@ -27,6 +27,7 @@ logging.basicConfig(level=logging.INFO)
 
 INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this text channel, or DM channels
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
+PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # file name of the product inventory attachment in a sync point
 
 # Items are things that makers can print or build.
 ITEM_CHOICES = {
@@ -42,6 +43,7 @@ VARIANT_CHOICES = {
 }
 
 # Leave all these debug flags FALSE for production run.
+DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = True  # Disable the inventory sync point recorded at bot start-up
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = True  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = True  # Make interactions in DM channel mimic behavior seen in official inventory
 
@@ -107,17 +109,21 @@ async def _post_sync_point_to_trans_log():
     s_buf = io.StringIO()
     inventory_df.to_csv(s_buf, index=False)
     s_buf.seek(0)
-    file = discord.File(s_buf, 'product_inventory.csv')
+    file = discord.File(s_buf, PRODUCT_CSV_FILE_NAME)
 
-    if DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM:
+    # FIXME - only write syncpoint if incrementally updated since the last sync point
+    sync_text = '✅ ' + "Bot restarted: sync point"
+
+    if DEBUG_DISABLE_STARTUP_INVENTORY_SYNC:
+
+        # FIXME - remove hardcoded user...
+
         guild = _get_first_guild()
         member = guild.get_member(700184823628562482)
-        await member.send('✅ ' + "Bot: sync point")
-        await member.send(file=file)
-
-# FIXME - else - post to actual inventory channel
-# remove hardcoded user...
-
+        await member.send('DEBUG: record in DM: ' + sync_text, file=file)
+    else:
+        ch = _get_inventory_channel()
+        await ch.send(sync_text, file=file)
 
 @bot.event
 async def on_ready():
@@ -125,9 +131,10 @@ async def on_ready():
     print(bot.user.name)
     print(bot.user.id)
     print('---- rebuilding inventory from log')
-    await _retrieve_inventory_df_from_transaction_log()
-    print('---- writing inventory sync point to log')
-    await _post_sync_point_to_trans_log()
+    updates_since_sync_point = await _retrieve_inventory_df_from_transaction_log()
+    if updates_since_sync_point:
+        print('---- writing inventory sync point to log')
+        await _post_sync_point_to_trans_log()
     print('---- ready')
 
 @lru_cache()
@@ -145,7 +152,7 @@ COL_COUNT = 'count'
 
 inventory_df = pd.DataFrame()  # type: pd.DataFrame
 
-async def _retrieve_inventory_df_from_transaction_log():
+async def _retrieve_inventory_df_from_transaction_log() -> int:
     """
     Troll through inventory channel's message records to find all relevant transactions until we hit a sync point.
     Use these to rebuild in memory the inventory dataframe.
@@ -156,6 +163,7 @@ async def _retrieve_inventory_df_from_transaction_log():
     # Only the last action of said tuple is used to rebuild the inventory.
     # Any previous action by the user on said tuple are ignored.
     last_action = {}
+    sync_point_df = None
 
     # Channel history is returned in reverse chronological order.
     # Troll through these entries and process only transaction log-type messages posted by the bot itself.
@@ -169,6 +177,17 @@ async def _retrieve_inventory_df_from_transaction_log():
 
         # FIXME fake sync point for now
         if text.endswith('sync point'):
+            if not msg.attachments:
+                print('Internal error - found a syncpoint without attachment. Continue trolling...')
+                continue
+            product_att = msg.attachments[0]
+            print('Found attachment: ' + product_att.filename)
+            if product_att.filename != PRODUCT_CSV_FILE_NAME:
+                print('Internal error - wrong inventory file found. Continue trolling...')
+                continue
+
+            csv_mem = io.BytesIO(await product_att.read())
+            sync_point_df = pd.read_csv(csv_mem)
             print("{:60} sync point - stop trolling".format(text))
             break
 
@@ -190,10 +209,16 @@ async def _retrieve_inventory_df_from_transaction_log():
                     last_action[key] = int(parts[1])
                     print("{:60} {}".format(text, command_head))
 
+    updates_since_sync_point = len(last_action)
     rows = []
     for (user_id, item, variant), count in last_action.items():
         if count is not None:
             rows.append((user_id, item, variant, count))
+
+    for index, row in sync_point_df.iterrows():
+        key = (row[COL_USER_ID], row[COL_ITEM] ,row[COL_VARIANT])
+        if not last_action.get(key):
+            rows.append((row[COL_USER_ID], row[COL_ITEM] ,row[COL_VARIANT], row[COL_COUNT]))
 
     print('  --- rebuilt inventory --')
     pprint(rows)
@@ -204,6 +229,7 @@ async def _retrieve_inventory_df_from_transaction_log():
 
     global inventory_df
     inventory_df = df
+    return updates_since_sync_point
 
 async def _send_df_as_msg_to_user(ctx, df):
     if not len(df):
