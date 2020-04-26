@@ -40,7 +40,9 @@ VARIANT_CHOICES = {
     'visor':     ["verkstan", "prusa"],
 }
 
-DEBUG_DISABLE_INVENTORY_POSTS = True  # Leave False for production run. Set to True to debug only in DM channel
+# Leave all these debug flags FALSE for production run.
+DEBUG_DISABLE_INVENTORY_POSTS = True  # Disable any inventory posting to official inventory channel - fake it in DM
+DEBUG_PRETEND_DM_IS_INVENTORY = True  # Make interactions in DM channel mimic behavior seen in official inventory
 
 ALIAS_MAPS = {}
 def _setup_aliases():
@@ -79,7 +81,7 @@ bot = commands.Bot(
     command_prefix=_fake_command_prefix_in_right_channel,
     help_command=commands.DefaultHelpCommand(
         no_category='Commands',
-        dm_help=False,   # TODO - change this to True to redirect help text that are too long to user's own DM channels?
+        dm_help=True,   # Set to True to redirect help text that are too long to user's own DM channels
     ),
 )
 
@@ -137,6 +139,7 @@ async def _retrieve_inventory_df_from_transaction_log():
     last_action = {}
 
     # FIXME - temporary sync point generator
+    # Generate a syncpoint message after successful rebuild of inventory, at startup
     # await ch.send('✅ ' + ": sync point")
 
     # Channel history is returned in reverse chronological order.
@@ -343,7 +346,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
 async def remove(ctx, item: str = None, variant: str = None):
     """
 Items and variants are case-insensitive. You can also use aliases such as 'ver', 'verk', 'pru', 'pet' \
-and 'vis', 'viso', etc. to refer to the the full item and variant names. To see your inventory records,
+and 'vis', 'viso', etc. to refer to the the full item and variant names. To see your inventory records, \
 type 'count'.
 
 remove - shortcut to remove the only item you have in the record.
@@ -466,7 +469,13 @@ async def _map_user_id_column_to_display_names(df):
     description="Report inventory of items by all users, broken down by item, variant and user.")
 async def report(ctx, item: str = None, variant: str = None):
     """
-'item' and 'variant' are optional. Use them to limit the types of items to report."""
+'item' and 'variant' are optional. Use them to limit the types of items to report.
+
+We encourage people to ask for reports by talking directly to Count Bot from their own DM channel. \
+This way the long report does not spam everyone in the inventory channel. \
+Every time a report command is used, a brief summary is posted in the inventory, \
+and the actual report is sent to the user's own DM channel, regardless of whether the report was requested \
+from the inventory channel or DM channel."""
 
     print('Command: report {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
 
@@ -496,12 +505,27 @@ async def report(ctx, item: str = None, variant: str = None):
     renamed = mapped.rename(columns={COL_USER_ID: "user"})
     repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
     groups = repivoted.groupby([COL_ITEM, COL_VARIANT], sort=True)
+
+    for_DM = []
+    for_inventory = []
     for index, table in groups:
         # Note that 'sparsify' works on all index columns, except for the very last index column.
         ordered = table.sort_index('columns')
         total = ordered[COL_COUNT].sum()
         total_line = "{0} {1} = {2} TOTAL".format(index[0], index[1], total)
-        await ctx.send("```{0}\n{1}```".format(total_line, ordered.to_string(index=False)))
+
+        for_DM.append("```{0}\n{1}```".format(total_line, ordered.to_string(index=False)))
+        for_inventory.append(total_line)
+
+    if ctx.message.channel.type == discord.ChannelType.private and not DEBUG_PRETEND_DM_IS_INVENTORY:
+        for txt in for_DM:
+            await ctx.send(txt)
+    else:
+        await ctx.send('Summary shown here. Detailed report sent to your DM channel.')
+        await ctx.send("```{0}```".format('\n'.join(for_inventory)))
+        await ctx.message.author.send("Detailed report: {0} {1}".format(item or '', variant or ''))
+        for txt in for_DM:
+            await ctx.message.author.send(txt)
 
 async def _user_has_role(user, role_name):
     member = await _map_dm_user_to_member(user)
@@ -512,7 +536,7 @@ async def _user_has_role(user, role_name):
     description="Admin executing commands on behalf of a user.")
 async def sudo(ctx, member: discord.Member, command: str, *args):
     """
-Only admins can execute sudo. 'member' may be @alias (in the inventory room) or 'alias' alone (in DM channels).
+Only admins can execute sudo. 'member' may be @alias (in the inventory room) or 'alias' alone (in DM channels). \
 Incorrect spelling of 'alias' will cause the command to fail. Note that 'alias' is case-sensitive.
 
 sudo <member> count [total] [item] [variant]
