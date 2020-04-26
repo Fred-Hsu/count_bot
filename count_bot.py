@@ -14,6 +14,7 @@ import logging
 import pandas as pd
 import sys
 import os
+import io
 import traceback
 import getpass
 
@@ -41,7 +42,7 @@ VARIANT_CHOICES = {
 }
 
 # Leave all these debug flags FALSE for production run.
-DEBUG_DISABLE_INVENTORY_POSTS = True  # Disable any inventory posting to official inventory channel - fake it in DM
+DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = True  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = True  # Make interactions in DM channel mimic behavior seen in official inventory
 
 ALIAS_MAPS = {}
@@ -102,13 +103,31 @@ async def on_command_error(ctx, error):
         print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
         traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
+async def _post_sync_point_to_trans_log():
+    s_buf = io.StringIO()
+    inventory_df.to_csv(s_buf, index=False)
+    s_buf.seek(0)
+    file = discord.File(s_buf, 'product_inventory.csv')
+
+    if DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM:
+        guild = _get_first_guild()
+        member = guild.get_member(700184823628562482)
+        await member.send('✅ ' + "Bot: sync point")
+        await member.send(file=file)
+
+# FIXME - else - post to actual inventory channel
+# remove hardcoded user...
+
+
 @bot.event
 async def on_ready():
     print('Logged in as')
     print(bot.user.name)
     print(bot.user.id)
-    print('---- retrieving inventory from log')
+    print('---- rebuilding inventory from log')
     await _retrieve_inventory_df_from_transaction_log()
+    print('---- writing inventory sync point to log')
+    await _post_sync_point_to_trans_log()
     print('---- ready')
 
 @lru_cache()
@@ -137,10 +156,6 @@ async def _retrieve_inventory_df_from_transaction_log():
     # Only the last action of said tuple is used to rebuild the inventory.
     # Any previous action by the user on said tuple are ignored.
     last_action = {}
-
-    # FIXME - temporary sync point generator
-    # Generate a syncpoint message after successful rebuild of inventory, at startup
-    # await ch.send('✅ ' + ": sync point")
 
     # Channel history is returned in reverse chronological order.
     # Troll through these entries and process only transaction log-type messages posted by the bot itself.
@@ -213,7 +228,7 @@ async def _resolve_variant_name(ctx, variant):
         return None
     return variant_name
 
-async def _post_transaction_log(ctx, trans_text):
+async def _post_user_count_to_trans_log(ctx, trans_text):
     """
     All valid transactions must begin with '✅ '.
     Do not post transaction messages without calling this function.
@@ -228,7 +243,7 @@ async def _post_transaction_log(ctx, trans_text):
         await ctx.send("Command processed. Transaction posted to channel '{0}'.".format(INVENTORY_CHANNEL))
         # If private DM channel, also post to inventory channel
         ch = _get_inventory_channel()
-        if DEBUG_DISABLE_INVENTORY_POSTS:
+        if DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM:
             await ctx.send('DEBUG: record in DM: ✅ ' + trans_text)
         else:
             await ch.send('✅ ' + trans_text + ' (from DM chat)')
@@ -331,7 +346,7 @@ count [total] [item] - shortcut to update a single variant of an item type."""
         return
 
     txt = '{0}: count {1} {2} {3}'.format(ctx.message.author.mention, total, item, variant)
-    await _post_transaction_log(ctx, txt)
+    await _post_user_count_to_trans_log(ctx, txt)
 
     # Only update memory DF after we have persisted the message to the inventory channel.
     # Think of the inventory channel as "disk", the permanent store.
@@ -365,7 +380,7 @@ remove all - special command to wipe out all records of this user."""
 
     if item == 'all':
         txt = '{0}: remove all'.format(ctx.message.author.mention)
-        await _post_transaction_log(ctx, txt)
+        await _post_user_count_to_trans_log(ctx, txt)
 
         # Only update memory DF after we have persisted the message to the inventory channel.
         df.drop((user_id), inplace=True)
@@ -422,7 +437,7 @@ remove all - special command to wipe out all records of this user."""
         return
 
     txt = '{0}: remove {1} {2}'.format(ctx.message.author.mention, item, variant)
-    await _post_transaction_log(ctx, txt)
+    await _post_user_count_to_trans_log(ctx, txt)
 
     # Only update memory DF after we have persisted the message to the inventory channel.
     df.drop((user_id, item, variant), inplace=True)
