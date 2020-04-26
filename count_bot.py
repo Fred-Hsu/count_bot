@@ -197,28 +197,32 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
             head, item, variant = text.rsplit(maxsplit=2)
             _garbage, command_head = head.split(':')
             key = (member.id, item, variant)
-            if last_action.get(key):
+            if key in last_action:
                 print("{:60} {}".format(text, 'superseded'))
                 continue
             else:
                 command_head = command_head.strip()
                 if command_head.startswith('remove'):
                     last_action[key] = None
+                    print("{:60} {}".format(text, command_head))
                 elif command_head.startswith('count'):
                     parts = command_head.split()
                     last_action[key] = int(parts[1])
                     print("{:60} {}".format(text, command_head))
 
+    print('  --- updates since last syncpoint --')
+    pprint(last_action)
     updates_since_sync_point = len(last_action)
+
     rows = []
     for (user_id, item, variant), count in last_action.items():
         if count is not None:
             rows.append((user_id, item, variant, count))
 
     for index, row in sync_point_df.iterrows():
-        key = (row[COL_USER_ID], row[COL_ITEM] ,row[COL_VARIANT])
-        if not last_action.get(key):
-            rows.append((row[COL_USER_ID], row[COL_ITEM] ,row[COL_VARIANT], row[COL_COUNT]))
+        key = (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT])
+        if key not in last_action:
+            rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT]))
 
     print('  --- rebuilt inventory --')
     pprint(rows)
