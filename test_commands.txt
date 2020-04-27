@@ -130,3 +130,7 @@ add
 add 1 prusa
 add 2 ver pla
 
+. Collection
+help collect
+help collect from
+who are collectors
