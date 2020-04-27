@@ -64,11 +64,13 @@ DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = True  # Disable any official inventory p
 DEBUG_PRETEND_DM_IS_INVENTORY = True  # Make interactions in DM channel mimic behavior seen in official inventory
 
 ALIAS_MAPS = {}
+ALL_ITEM_VARIANT_COMBOS = []
 def _setup_aliases():
     for item, variants in VARIANT_CHOICES.items():
         ALIAS_MAPS.update([(item[:i].lower(), item) for i in range(3, len(item)+1)])
         for variant in variants:
             ALIAS_MAPS.update([(variant[:i].lower(), variant) for i in range(3, len(variant)+1)])
+            ALL_ITEM_VARIANT_COMBOS.append((item, variant))
 _setup_aliases()
 
 def _fake_command_prefix_in_right_channel(_bot, message):
@@ -133,6 +135,8 @@ async def _post_sync_point_to_trans_log():
     file = discord.File(s_buf, PRODUCT_CSV_FILE_NAME)
     sync_text = '✅ ' + "Bot restarted: sync point"
 
+    # FIXME - only writes maker inventory. Not yet collector inventory
+
     if DEBUG_DISABLE_STARTUP_INVENTORY_SYNC:
         # FIXME - remove hardcoded user...
         guild = _get_first_guild()
@@ -162,6 +166,48 @@ def _get_inventory_channel():
             return ch
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
 
+async def _process_one_trans_record(member, last_action, text, item, variant, command):
+    key = (member.id, item, variant)
+    if key in last_action:
+        print("{:60} {}".format(text, 'superseded by count and remove'))
+        return
+    else:
+        if (item, variant) == ('remove', 'all'):
+            for combo in ALL_ITEM_VARIANT_COMBOS:
+                combo_key = (member.id, combo[0], combo[1])
+                if combo_key not in last_action:
+                    last_action[combo_key] = None
+            print("{:60} {}".format(text, 'remove all'))
+            return
+        elif command.startswith('remove'):
+            last_action[key] = None
+            print("{:60} {}".format(text, command))
+        elif command.startswith('count'):
+            parts = command.split()
+            last_action[key] = int(parts[1])
+            print("{:60} {}".format(text, command))
+        else:
+            print("{:60} {}".format(text, 'I DO NOT UNDERSTAND THIS COMMAND'))
+
+def _rebuild_dataframe_from_log(last_action, df_read):
+    rows = []
+    for (user_id, item, variant), num in last_action.items():
+        if num is not None:
+            rows.append((user_id, item, variant, num))
+
+    # FIXME - only reads maker inventory. Not yet collector inventory. Remove when we never pass None in
+    if df_read is not None:
+        for index, row in df_read.iterrows():
+            key = (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT])
+            if key not in last_action:
+                rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT]))
+    pprint(rows)
+
+    column_names = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
+    df = pd.DataFrame(rows, columns=column_names)
+    df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
+    return df
+
 async def _retrieve_inventory_df_from_transaction_log() -> bool:
     """
     Troll through inventory channel's message records to find all relevant transactions until we hit a sync point.
@@ -172,9 +218,11 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
     # This tracks the last action performed by a user on an item + variant.
     # Only the last action of said tuple is used to rebuild the inventory.
     # Any previous action by the user on said tuple are ignored.
-    last_action = {}
-    removed_all = False
-    sync_point_df = None
+    last_action_by_role = {
+        'makers': {},
+        'collectors': {},
+    }
+    sync_point_maker_df = None
 
     # Channel history is returned in reverse chronological order.
     # Troll through these entries and process only transaction log-type messages posted by the bot itself.
@@ -196,8 +244,10 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
                 print('Internal error - wrong inventory file found. Continue trolling...')
                 continue
 
+            # FIXME - only reads maker inventory. Not yet collector inventory
+
             csv_mem = io.BytesIO(await product_att.read())
-            sync_point_df = pd.read_csv(csv_mem)
+            sync_point_maker_df = pd.read_csv(csv_mem)
             print("{:60} sync point - stop trolling".format(text))
             break
 
@@ -206,52 +256,28 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
             member = msg.mentions[0]
             head, item, variant = text.rsplit(maxsplit=2)
             _garbage, command_head = head.split(':')
-            key = (member.id, item, variant)
-            if removed_all:
-                print("{:60} {}".format(text, 'superseded by remove all'))
-                continue
-            elif key in last_action:
-                print("{:60} {}".format(text, 'superseded by count'))
-                continue
+            command_head = command_head.strip()
+            if command_head.startswith('collect'):
+                last_action = last_action_by_role['collectors']
+                _garbage, command = command_head.split(maxsplit=1)
             else:
-                command_head = command_head.strip()
-                if (item, variant) == ('remove', 'all'):
-                    removed_all = True
-                    print("{:60} {}".format(text, 'clear all records from this point back'))
-                    continue
-                elif command_head.startswith('remove'):
-                    last_action[key] = None
-                    print("{:60} {}".format(text, command_head))
-                elif command_head.startswith('count'):
-                    parts = command_head.split()
-                    last_action[key] = int(parts[1])
-                    print("{:60} {}".format(text, command_head))
-                else:
-                    print("{:60} {}".format(text, 'I DO NOT UNDERSTAND THIS COMMAND'))
+                last_action = last_action_by_role['makers']
+                command = command_head
+            await _process_one_trans_record(member, last_action, text, item, variant, command)
 
     print('  --- updates since last syncpoint --')
-    pprint(last_action)
-    updates_since_sync_point = len(last_action) > 1 or removed_all
-
-    rows = []
-    for (user_id, item, variant), num in last_action.items():
-        if num is not None:
-            rows.append((user_id, item, variant, num))
-    if not removed_all:
-        for index, row in sync_point_df.iterrows():
-            key = (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT])
-            if key not in last_action:
-                rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT]))
+    pprint(last_action_by_role)
+    updates_since_sync_point = len(last_action_by_role['collectors']) > 1 or len(last_action_by_role['makers']) > 1
 
     print('  --- rebuilt inventory --')
-    pprint(rows)
+    print('Maker sync point:')
+    print(sync_point_maker_df.to_string(index=False))
+    print('Maker df:')
+    maker_df = _rebuild_dataframe_from_log(last_action_by_role['makers'], sync_point_maker_df)
 
-    column_names = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
-    maker_df = pd.DataFrame(rows, columns=column_names)
-    maker_df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
-
-    collector_df = pd.DataFrame([], columns=column_names)
-    collector_df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
+    print('Collector df:')
+    # FIXME - only reads maker inventory. Not yet collector inventory
+    collector_df = _rebuild_dataframe_from_log(last_action_by_role['collectors'], None)
 
     global maker_inventory_df
     global collector_inventory_df
@@ -287,7 +313,7 @@ async def _resolve_variant_name(ctx, variant):
         return None
     return variant_name
 
-async def _post_user_count_to_trans_log(ctx, trans_text):
+async def _post_user_record_to_trans_log(ctx, command_text, detail_text):
     """
     All valid transactions must begin with '✅ '.
     Do not post transaction messages without calling this function.
@@ -297,6 +323,8 @@ async def _post_user_count_to_trans_log(ctx, trans_text):
     # This is the last line of defense against random users DM'ins the bot to cause DoS attacks.
     # The function will raise exception of user is not in the guild.
     await _map_dm_user_to_member(ctx.message.author)
+
+    trans_text = '{0}: {1} {2}'.format(ctx.message.author.mention, command_text, detail_text)
 
     if ctx.message.channel.type == discord.ChannelType.private:
         await ctx.send("Command processed. Transaction posted to channel '{0}'.".format(INVENTORY_CHANNEL))
@@ -418,8 +446,8 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
             row = rows.iloc[0]
             total += row[COL_COUNT]
 
-    txt = '{0}: {1} {2} {3} {4}'.format(ctx.message.author.mention, ctx.command, total, item, variant)
-    await _post_user_count_to_trans_log(ctx, txt)
+    txt = '{0} {1} {2}'.format(total, item, variant)
+    await _post_user_record_to_trans_log(ctx, 'count' if role == 'makers' else 'collect count', txt)
 
     # Only update memory DF after we have persisted the message to the inventory channel.
     # Think of the inventory channel as "disk", the permanent store.
@@ -488,8 +516,7 @@ async def _remove(ctx, item: str = None, variant: str = None, role='makers'):
         return
 
     if item == 'all':
-        txt = '{0}: {1} all'.format(ctx.message.author.mention, ctx.command)
-        await _post_user_count_to_trans_log(ctx, txt)
+        await _post_user_record_to_trans_log(ctx, 'remove' if role == 'makers' else 'collect remove', 'all')
 
         # Only update memory DF after we have persisted the message to the inventory channel.
         df.drop((user_id), inplace=True)
@@ -552,8 +579,8 @@ async def _remove(ctx, item: str = None, variant: str = None, role='makers'):
         await ctx.send(txt)
         return
 
-    txt = '{0}: {1} {2} {3}'.format(ctx.message.author.mention, ctx.command, item, variant)
-    await _post_user_count_to_trans_log(ctx, txt)
+    txt = '{0} {1}'.format(item, variant)
+    await _post_user_record_to_trans_log(ctx, 'remove' if role == 'makers' else 'collect remove', txt)
 
     # Only update memory DF after we have persisted the message to the inventory channel.
     df.drop((user_id, item, variant), inplace=True)
@@ -868,6 +895,7 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
     # FIXME implement 'collect from'
     # await _count(ctx, num, item, variant, delta=True)
 
+# FIXME - add sudo add and sudo reset
 # FIXME - syncpoint can't handle 'collect' commands yet
 # FIXME - add 'sudo collection...'
 
