@@ -160,6 +160,10 @@ collect add 3 ver pla
 collect reset ver pla
 collect remove ver
 
+. remove all
+collect count 5 prusa pet
+collect remove all
+
 . Error - try removing something that has already been removed
 collect remove prusa pet
 collect remove prusa

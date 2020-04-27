@@ -413,7 +413,7 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
             row = rows.iloc[0]
             total += row[COL_COUNT]
 
-    txt = '{0}: count {1} {2} {3}'.format(ctx.message.author.mention, total, item, variant)
+    txt = '{0}: {1} {2} {3} {4}'.format(ctx.message.author.mention, ctx.command, total, item, variant)
     await _post_user_count_to_trans_log(ctx, txt)
 
     # Only update memory DF after we have persisted the message to the inventory channel.
@@ -483,7 +483,7 @@ async def _remove(ctx, item: str = None, variant: str = None, role='makers'):
         return
 
     if item == 'all':
-        txt = '{0}: remove all'.format(ctx.message.author.mention)
+        txt = '{0}: {1} all'.format(ctx.message.author.mention, ctx.command)
         await _post_user_count_to_trans_log(ctx, txt)
 
         # Only update memory DF after we have persisted the message to the inventory channel.
@@ -547,7 +547,7 @@ async def _remove(ctx, item: str = None, variant: str = None, role='makers'):
         await ctx.send(txt)
         return
 
-    txt = '{0}: remove {1} {2}'.format(ctx.message.author.mention, item, variant)
+    txt = '{0}: {1} {2} {3}'.format(ctx.message.author.mention, ctx.command, item, variant)
     await _post_user_count_to_trans_log(ctx, txt)
 
     # Only update memory DF after we have persisted the message to the inventory channel.
@@ -863,8 +863,8 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
     # FIXME implement 'collect from'
     # await _count(ctx, num, item, variant, delta=True)
 
-# FIXME - bug - transaction record does not show 'maker vs collect' in the command line
 # FIXME - bug - syncpoint can't handle 'remove all', only the regular remove with count
+#   should flag any log with command that we don't yet understand
 # FIXME - add 'sudo collection...'
 
 bot.run(get_bot_token())
