@@ -131,14 +131,10 @@ async def _post_sync_point_to_trans_log():
     maker_inventory_df.to_csv(s_buf, index=False)
     s_buf.seek(0)
     file = discord.File(s_buf, PRODUCT_CSV_FILE_NAME)
-
-    # FIXME - only write syncpoint if incrementally updated since the last sync point
     sync_text = '✅ ' + "Bot restarted: sync point"
 
     if DEBUG_DISABLE_STARTUP_INVENTORY_SYNC:
-
         # FIXME - remove hardcoded user...
-
         guild = _get_first_guild()
         member = guild.get_member(700184823628562482)
         await member.send('DEBUG: record in DM: ' + sync_text, file=file)
@@ -166,7 +162,7 @@ def _get_inventory_channel():
             return ch
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
 
-async def _retrieve_inventory_df_from_transaction_log() -> int:
+async def _retrieve_inventory_df_from_transaction_log() -> bool:
     """
     Troll through inventory channel's message records to find all relevant transactions until we hit a sync point.
     Use these to rebuild in memory the inventory dataframe.
@@ -177,6 +173,7 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
     # Only the last action of said tuple is used to rebuild the inventory.
     # Any previous action by the user on said tuple are ignored.
     last_action = {}
+    removed_all = False
     sync_point_df = None
 
     # Channel history is returned in reverse chronological order.
@@ -189,7 +186,6 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
         if not text.startswith('✅ '):
             continue
 
-        # FIXME fake sync point for now
         if text.endswith('sync point'):
             if not msg.attachments:
                 print('Internal error - found a syncpoint without attachment. Continue trolling...')
@@ -211,32 +207,41 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
             head, item, variant = text.rsplit(maxsplit=2)
             _garbage, command_head = head.split(':')
             key = (member.id, item, variant)
-            if key in last_action:
-                print("{:60} {}".format(text, 'superseded'))
+            if removed_all:
+                print("{:60} {}".format(text, 'superseded by remove all'))
+                continue
+            elif key in last_action:
+                print("{:60} {}".format(text, 'superseded by count'))
                 continue
             else:
                 command_head = command_head.strip()
-                if command_head.startswith('remove'):
+                if (item, variant) == ('remove', 'all'):
+                    removed_all = True
+                    print("{:60} {}".format(text, 'clear all records from this point back'))
+                    continue
+                elif command_head.startswith('remove'):
                     last_action[key] = None
                     print("{:60} {}".format(text, command_head))
                 elif command_head.startswith('count'):
                     parts = command_head.split()
                     last_action[key] = int(parts[1])
                     print("{:60} {}".format(text, command_head))
+                else:
+                    print("{:60} {}".format(text, 'I DO NOT UNDERSTAND THIS COMMAND'))
 
     print('  --- updates since last syncpoint --')
     pprint(last_action)
-    updates_since_sync_point = len(last_action)
+    updates_since_sync_point = len(last_action) > 1 or removed_all
 
     rows = []
     for (user_id, item, variant), num in last_action.items():
         if num is not None:
             rows.append((user_id, item, variant, num))
-
-    for index, row in sync_point_df.iterrows():
-        key = (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT])
-        if key not in last_action:
-            rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT]))
+    if not removed_all:
+        for index, row in sync_point_df.iterrows():
+            key = (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT])
+            if key not in last_action:
+                rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT]))
 
     print('  --- rebuilt inventory --')
     pprint(rows)
@@ -863,8 +868,7 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
     # FIXME implement 'collect from'
     # await _count(ctx, num, item, variant, delta=True)
 
-# FIXME - bug - syncpoint can't handle 'remove all', only the regular remove with count
-#   should flag any log with command that we don't yet understand
+# FIXME - syncpoint can't handle 'collect' commands yet
 # FIXME - add 'sudo collection...'
 
 bot.run(get_bot_token())
