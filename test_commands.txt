@@ -50,6 +50,10 @@ remove verk
 . Remove one row with item name only (3 rows left)
 remove visor
 
+. Error - try removing something that has already been remove
+remove visor
+remove visor prusa
+
 . remove two rows with both item name and variant (1 row left)
 remove prusa pla
 remove ver pet
@@ -134,3 +138,28 @@ add 2 ver pla
 help collect
 help collect from
 who are collectors
+
+. Errors - collect and collect count - no items in collection yet
+collect
+collect count
+collect count visor
+collect count visor prusa
+
+. Errors - no such subcommand
+collect xya
+
+. Add three items into collection
+collect count 10 prusa PETG
+collect count 20 ver pla
+collect count 30 visor prusa
+
+. reset and removal - leaving one row
+collect count 0 prusa pet
+collect remove prusa pet
+collect add 3 ver pla
+collect reset ver pla
+collect remove ver
+
+. Error - try removing something that has already been removed
+collect remove prusa pet
+collect remove prusa

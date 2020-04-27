@@ -30,6 +30,11 @@ ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # file name of the product inventory attachment in a sync point
 
+USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP = {
+    'admins': ADMIN_ROLE_NAME,
+    'collectors': COLLECTOR_ROLE_NAME,
+}
+
 # Items are things that makers can print or build.
 ITEM_CHOICES = {
     'verkstan':  "3D Verkstan head band",
@@ -42,6 +47,16 @@ VARIANT_CHOICES = {
     'prusa':     ["PETG", "PLA"],
     'visor':     ["verkstan", "prusa"],
 }
+
+COL_USER_ID = 'user_id'
+COL_ITEM = 'item'
+COL_VARIANT = 'variant'
+COL_COUNT = 'count'
+
+maker_inventory_df = pd.DataFrame()  # Stores what makers have made, but not yet passed onto collectors
+collector_inventory_df = pd.DataFrame()  # Stores what collectors have collected from makers
+
+USER_ROLE_HUMAN_TO_INVENTORY_DF_MAP = {}
 
 # Leave all these debug flags FALSE for production run.
 DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = True  # Disable the inventory sync point recorded at bot start-up
@@ -151,13 +166,6 @@ def _get_inventory_channel():
             return ch
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
 
-COL_USER_ID = 'user_id'
-COL_ITEM = 'item'
-COL_VARIANT = 'variant'
-COL_COUNT = 'count'
-
-maker_inventory_df = pd.DataFrame()  # Stores what makers have made, but not yet passed onto collectors
-
 async def _retrieve_inventory_df_from_transaction_log() -> int:
     """
     Troll through inventory channel's message records to find all relevant transactions until we hit a sync point.
@@ -221,9 +229,9 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
     updates_since_sync_point = len(last_action)
 
     rows = []
-    for (user_id, item, variant), count in last_action.items():
-        if count is not None:
-            rows.append((user_id, item, variant, count))
+    for (user_id, item, variant), num in last_action.items():
+        if num is not None:
+            rows.append((user_id, item, variant, num))
 
     for index, row in sync_point_df.iterrows():
         key = (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT])
@@ -234,11 +242,21 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
     pprint(rows)
 
     column_names = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
-    df = pd.DataFrame(rows, columns=column_names)
-    df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
+    maker_df = pd.DataFrame(rows, columns=column_names)
+    maker_df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
+
+    collector_df = pd.DataFrame([], columns=column_names)
+    collector_df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
 
     global maker_inventory_df
-    maker_inventory_df = df
+    global collector_inventory_df
+    global USER_ROLE_HUMAN_TO_INVENTORY_DF_MAP
+    maker_inventory_df = maker_df
+    collector_inventory_df = collector_df
+    USER_ROLE_HUMAN_TO_INVENTORY_DF_MAP = {
+        'makers': maker_inventory_df,
+        'collectors': collector_inventory_df,
+    }
     return updates_since_sync_point
 
 async def _send_df_as_msg_to_user(ctx, df):
@@ -328,14 +346,15 @@ count 20 prusa - shortcut to update a single variant of prusa shield you make.
     print('Command: count {0} {1} {2} ({3})'.format(total, item, variant, ctx.message.author.display_name))
     await _count(ctx, total, item, variant)
 
-async def _count(ctx, total: int = None, item: str = None, variant: str = None, delta: bool = False):
+async def _count(ctx, total: int = None, item: str = None, variant: str = None, delta: bool = False, role='makers'):
     """Internal implementation of count, add and reset."""
 
     if isinstance(total, str):
         # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
         total = int(total)
 
-    df = maker_inventory_df
+    df = USER_ROLE_HUMAN_TO_INVENTORY_DF_MAP[role]
+
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
     found_num = sum(cond)
@@ -373,7 +392,7 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
                     # Fall through to normal code which updates the count
                 else:
                     await ctx.send("❌  Found more than one types of items. Please be more specific. "
-                        "Or use 'reset' to remove item types. See help.".format(item))
+                        "Or use 'reset' to remove item types. See help.")
                     await _send_df_as_msg_to_user(ctx, df[cond])
                     await ctx.send_help(ctx.command)
                     return
@@ -447,9 +466,14 @@ remove - shortcut to remove the only item you have in the record.
 remove [item] - shortcut to update a single variant of an item type.
 remove all - special command to wipe out all records of this user.
 """
-
     print('Command: remove {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
-    df = maker_inventory_df
+    await _remove(ctx, item, variant)
+
+async def _remove(ctx, item: str = None, variant: str = None, role='makers'):
+    """Internal implementation of 'remove'."""
+
+    df = USER_ROLE_HUMAN_TO_INVENTORY_DF_MAP[role]
+
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
     found_num = sum(cond)
@@ -475,7 +499,7 @@ remove all - special command to wipe out all records of this user.
             variant = row[COL_VARIANT][0]
             # Fall through to normal code which updates the count
         else:
-            await ctx.send("❌  Found more than one types of items. Please be more specific. See help.".format(item))
+            await ctx.send("❌  Found more than one types of items. Please be more specific. See help.")
             await _send_df_as_msg_to_user(ctx, df[cond])
             await ctx.send_help(ctx.command)
             return
@@ -494,10 +518,14 @@ remove all - special command to wipe out all records of this user.
             row = df[cond]
             variant = row[COL_VARIANT][0]
             # Fall through to normal code which updates the count
-        else:
-            await ctx.send("❌  Found more than one variant of items. Please be more specific. See help.".format(item))
+        elif found_num > 1:
+            await ctx.send("❌  Found more than one variant of item '{0}'. "
+                "Please be more specific. See help.".format(item))
             await _send_df_as_msg_to_user(ctx, df[cond])
             await ctx.send_help(ctx.command)
+            return
+        else:
+            await ctx.send("❌  You have no more items of this type to remove.")
             return
 
     item = await _resolve_item_name(ctx, item)
@@ -510,7 +538,10 @@ remove all - special command to wipe out all records of this user.
 
     cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item) & (df[COL_VARIANT] == variant)
     rows = df[cond]
-    if len(rows) != 1:
+    if len(rows) == 0:
+        await ctx.send("❌  You have no more items of this type to remove.")
+        return
+    elif len(rows) != 1:
         txt = '❌  Internal error - got more than one row - this is not expected. Abort.'
         print(txt)
         await ctx.send(txt)
@@ -548,10 +579,10 @@ async def _map_user_ids_to_display_names(ids):
     # If a user id isn't found to be associated to this guild, it will not be included in the returned map.
     guild = _get_first_guild()
     mapped = {}
-    for id in ids:
-        member = guild.get_member(id)
+    for the_id in ids:
+        member = guild.get_member(the_id)
         if member:
-            mapped[id] = member.display_name
+            mapped[the_id] = member.display_name
     return mapped
 
 async def _map_user_id_column_to_display_names(df):
@@ -602,7 +633,7 @@ from the inventory channel or DM channel.
     repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
     groups = repivoted.groupby([COL_ITEM, COL_VARIANT], sort=True)
 
-    for_DM = []
+    for_dm = []
     for_inventory = []
     for index, table in groups:
         # Note that 'sparsify' works on all index columns, except for the very last index column.
@@ -610,17 +641,17 @@ from the inventory channel or DM channel.
         total = ordered[COL_COUNT].sum()
         total_line = "{0} {1} = {2} TOTAL".format(index[0], index[1], total)
 
-        for_DM.append("```{0}\n{1}```".format(total_line, ordered.to_string(index=False, header=False)))
+        for_dm.append("```{0}\n{1}```".format(total_line, ordered.to_string(index=False, header=False)))
         for_inventory.append(total_line)
 
     if ctx.message.channel.type == discord.ChannelType.private and not DEBUG_PRETEND_DM_IS_INVENTORY:
-        for txt in for_DM:
+        for txt in for_dm:
             await ctx.send(txt)
     else:
         await ctx.send('Summary shown here. Detailed report sent to your DM channel.')
         await ctx.send("```{0}```".format('\n'.join(for_inventory)))
         await ctx.message.author.send("Detailed report: {0} {1}".format(item or '', variant or ''))
-        for txt in for_DM:
+        for txt in for_dm:
             await ctx.message.author.send(txt)
 
 async def _user_has_role(user, role_name):
@@ -681,17 +712,12 @@ The argument [are] is always ignored. It's just there so you can ask:
 """
     print('Command: who {0} {1} ({2})'.format(are, role, ctx.message.author.display_name))
 
-    role_map = {
-        'admins':       ADMIN_ROLE_NAME,
-        'collectors':   COLLECTOR_ROLE_NAME,
-    }
-
     if role == 'you' or not role:
         await ctx.send("Count Bot Johnny 5 at your service. ||Run by ({0}) with pid ({1})||".format(
             getpass.getuser(), os.getpid()))
 
-    elif role in role_map:
-        role = _get_role_by_name(role_map[role])
+    elif role in USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP:
+        role = _get_role_by_name(USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP[role])
         members = role.members
         names = sorted([member.display_name for member in members])
         output = '  ' + '\n  '.join(names)
@@ -736,17 +762,82 @@ You can also type 'help collect from' to see help page for a specific subcommand
 If you run collect without a subcommand, it shows you your currection collection inventory.
 """
     collect_author = ctx.message.author
-    if ctx.invoked_subcommand is None:
-        await ctx.send("Command not yet implemented...")
+    print('Command: collect ... ({0})'.format(collect_author.display_name))
 
     is_collector = await _user_has_role(collect_author, COLLECTOR_ROLE_NAME)
     if not is_collector:
         await ctx.send("❌  You need to have the collector role. Please ask to be made a collector.")
         raise NotEntitledError()
 
-    print('Command: collect ... ({0})'.format(collect_author.display_name))
+    if ctx.subcommand_passed is None:
+        # 'collect' without any subcommand is a 'collect count'
+        await _count(ctx, role='collectors')
 
-    # FIXME implement 'collect' without argument - print out the collection table for this user
+@collect.command(
+    name='count',
+    brief="A collector re-counts items in her collection",
+    description="A collector recounts items in her collection:")
+async def collect_count(ctx, num: int = None, item: str = None, variant: str = None):
+    """
+This is similar to 'count' that makers use to re-count items they have made. \
+With 'collect count', a collect can fix mistakes in previous collections by simply setting a new collection count.
+
+Type 'help count' to see descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
+
+collect count - shows everything in this collector's inventory.
+collect count 20 - used when a collector has only one item type in collection.
+collect count 20 prusa - used when a collector has only one variant of prusa.
+"""
+    print('Command: collect count {0} {1} {2} ({3})'.format(num, item, variant, ctx.message.author.display_name))
+    await _count(ctx, num, item, variant, role='collectors')
+
+@collect.command(
+    name='reset',
+    brief="A collector resets item count to 0 in her collection",
+    description="A collector resets item count to 0 in her collection:")
+async def collect_reset(ctx, item: str = None, variant: str = None):
+    """
+Reset the count of an item to 0 in a collection. This is basically an alias for 'collect count 0'. \
+'Reset' is not the same as 'remove'. Use 'reset' after a drop to a hospital to reset your collection count, \
+so you can collect more and update the count later. 'Remove' on the other hand will \
+remove an item type in your collection, indicating that you do not plan to collect more of that item type.
+
+collect reset -> collect count 0
+collect reset prusa -> collect count 0 prusa
+collect reset prusa PETG -> collect count 0 prusa PETG
+"""
+    print('Command: collect reset {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
+    await _count(ctx, 0, item, variant, role='collectors')
+
+@collect.command(
+    name='remove',
+    brief="Remove an item type from a collection",
+    description="Remove {item} of {variant} type from collection:")
+async def collect_remove(ctx, item: str = None, variant: str = None):
+    """
+'Remove' is not the same as 'reset'. Use 'remove' when you no longer collect a certain item type.
+
+collect remove - shortcut to remove the only item in your collection.
+collect remove [item] - shortcut to update a single variant of an item type.
+collect remove all - special command to wipe out all items from collection.
+"""
+    print('Command: collect remove {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
+    await _remove(ctx, item, variant, role='collectors')
+
+@collect.command(
+    name='add',
+    brief="Similar to 'collect count', but it adds instead of updating count",
+    description="Add n items to the current collection of item/variant:")
+async def collect_add(ctx, num: int = None, item: str = None, variant: str = None):
+    """
+See 'help count' for descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
+
+collect add - show items you make. Same as 'collect count' without arguments.
+collect add 20 - add 20 to the running count of a single item in collection.
+collect add 20 prusa - add 20 to the collection of a single variant of prusa.
+"""
+    print('Command: collect add {0} {1} {2} ({3})'.format(num, item, variant, ctx.message.author.display_name))
+    await _count(ctx, num, item, variant, delta=True, role='collectors')
 
 @collect.command(
     name='from',
@@ -765,70 +856,15 @@ collect from @Freddie 20: used when Freddie only makes one exact item type.
 collect from @Freddie 20 prusa: when Freedie makes only one variant of prusa.
 collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker.
 """
-    print('Command: collect from {0} {1} {2} {3} ({4})'.format(maker, num, item, variant, ctx.message.author.display_name))
+    print('Command: collect from {0} {1} {2} {3} ({4})'.format(
+        maker, num, item, variant, ctx.message.author.display_name))
 
     await ctx.send("Command not yet implemented...")
     # FIXME implement 'collect from'
     # await _count(ctx, num, item, variant, delta=True)
 
-@collect.command(
-    name='count',
-    brief="A collector re-counts items in her collection",
-    description="A collector recounts items in her collection:")
-async def collect_count(ctx, num: int = None, item: str = None, variant: str = None):
-    """
-This is similar to 'count' that makers use to re-count items they have made. \
-With 'collect count', a collect can fix mistakes in previous collections by simply setting a new collection count.
-
-Type 'help count' to see descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
-
-collect count 20 - used when a collector has only one item type in collection.
-collect count 20 prusa - used when a collector has only one variant of prusa.
-"""
-    print('Command: collect count {0} {1} {2} ({3})'.format(num, item, variant, ctx.message.author.display_name))
-
-    await ctx.send("Command not yet implemented...")
-    # FIXME implement 'collect count'
-
-@collect.command(
-    name='reset',
-    brief="A collector resets item count to 0 in her collection",
-    description="A collector resets item count to 0 in her collection:")
-async def collect_reset(ctx, item: str = None, variant: str = None):
-    """
-Reset the count of an item to 0 in a collection. This is basically an alias for 'collect count 0'. \
-'Reset' is not the same as 'remove'. Use 'reset' after a drop to a hospital to reset your collection count, \
-so you can collect more and update the count later. 'Remove' on the other hand will \
-remove an item type in your collection, indicating that you do not plan to collect more of that item type.
-
-collect reset -> collect count 0
-collect reset prusa -> collect count 0 prusa
-collect reset prusa PETG -> collect count 0 prusa PETG
-"""
-    print('Command: collect reset {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
-
-    await ctx.send("Command not yet implemented...")
-    # FIXME implement 'collect reset'
-    # await _count(ctx, 0, item, variant)
-
-@collect.command(
-    name='add',
-    brief="Similar to 'collect count', but it adds instead of updating count",
-    description="Add n items to the current collection of item/variant:")
-async def collect_add(ctx, num: int = None, item: str = None, variant: str = None):
-    """
-See 'help count' for descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
-
-collect add - show items you make. Same as 'collect count' without arguments.
-collect add 20 - add 20 to the running count of a single item in collection.
-collect add 20 prusa - add 20 to the collection of a single variant of prusa.
-"""
-    print('Command: collect add {0} {1} {2} ({3})'.format(num, item, variant, ctx.message.author.display_name))
-
-    await ctx.send("Command not yet implemented...")
-    # FIXME implement 'collect add'
-    # await _count(ctx, num, item, variant, delta=True)
-
-# FIXME - people should be able to ask who the current collectors are.
+# FIXME - bug - transaction record does not show 'maker vs collect' in the command line
+# FIXME - bug - syncpoint can't handle 'remove all', only the regular remove with count
+# FIXME - add 'sudo collection...'
 
 bot.run(get_bot_token())
