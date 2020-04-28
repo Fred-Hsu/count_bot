@@ -172,3 +172,16 @@ collect remove prusa
 sudo justin add 3 viso prusa
 sudo justin add 3 prusa petg
 sudo justin reset visor prusa
+
+sudo justin collect count 3 viso prusa
+sudo justin collect add 3 prusa petg
+sudo justin collect reset visor prusa
+sudo justin collect remove visor prusa
+
+. Error - all arguments are mandatory
+collect from justin 20
+collect from justin 20 prusa
+
+. collect 'from' - Freddie doesn't have 50 shields - the source gets reset to 0 instead of negative number
+collect from justin 50 prusa pla
+

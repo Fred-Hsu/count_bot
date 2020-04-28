@@ -305,6 +305,7 @@ async def _send_df_as_msg_to_user(ctx, df):
         await ctx.send("```(no inventory records)```")
     else:
         result = df.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT]]
+        result = result.sort_index(axis='index')
         await ctx.send("```{0}```".format(result.to_string(index=False)))
 
 async def _resolve_item_name(ctx, item):
@@ -389,7 +390,8 @@ count 20 prusa - shortcut to update a single variant of prusa shield you make.
     print('Command: count {0} {1} {2} ({3})'.format(total, item, variant, ctx.message.author.display_name))
     await _count(ctx, total, item, variant)
 
-async def _count(ctx, total: int = None, item: str = None, variant: str = None, delta: bool = False, role='makers'):
+async def _count(ctx, total: int = None, item: str = None, variant: str = None, delta: bool = False,
+                 role='makers', trial_run_only=False):
     """
     Internal implementation of count, add and reset.
     This is one of the very few fundamental methods that produces a command record in the transaction log.
@@ -459,6 +461,13 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
         if len(rows) == 1:
             row = rows.iloc[0]
             total += row[COL_COUNT]
+
+    if trial_run_only:
+        return
+
+    if total < 0:
+        await ctx.send("Resulting negative count '{0}' is recorded as 0 instead.".format(total))
+        total = 0
 
     txt = '{0} {1} {2}'.format(total, item, variant)
     await _post_user_record_to_trans_log(ctx, 'count' if role == 'makers' else 'collect count', txt)
@@ -903,24 +912,29 @@ collect add 20 prusa - add 20 to the collection of a single variant of prusa.
     name='from',
     brief="A collector moves n items from a maker to her collection",
     description="A collector moves n items from a maker to her collection:")
-async def collect_from(ctx, maker: discord.Member, num: int = None, item: str = None, variant: str = None):
+async def collect_from(ctx, maker: discord.Member, num: int, item: str, variant: str):
     """
 This is like a banking transfer. A collector transfers n items from a a maker's inventory to the collector's. \
 The {maker} can be the collector herself. Everyone can play both roles: makers and collectors at different times \
 of the day. The collector word is final. If the maker's inventory is lower than what the collector claims, \
-the maker's inventory count is simply reduced to 0.
+the maker's inventory count is simply reduced to 0. Unlike commands such as 'count' and 'add', this command \
+requires the user to specify both item and variant. These values cannot be defaulted.
 
 Type 'help count' to see descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
 
-collect from @Freddie 20: used when Freddie only makes one exact item type.
-collect from @Freddie 20 prusa: when Freedie makes only one variant of prusa.
+collect from @Freddie 20 prusa PETG: collector receives 20 items from a maker.
 collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker.
 """
+    collector_author = ctx.message.author
     print('Command: collect from {0} {1} {2} {3} ({4})'.format(
-        maker, num, item, variant, ctx.message.author.display_name))
+        maker, num, item, variant, collector_author.display_name))
 
-    await ctx.send("Command not yet implemented...")
-    # FIXME implement 'collect from'
-    # await _count(ctx, num, item, variant, delta=True)
+    # Make a trial run to bail out early if args are incorrect, so that we can guarantee the success of the
+    # actual transfer which consists of two separate commands, in a pseudo-atomic fashion.
+    for trial_type in (True, False):
+        ctx.message.author = collector_author
+        await _count(ctx, num, item, variant, delta=True, role='collectors', trial_run_only=trial_type)
+        ctx.message.author = maker
+        await _count(ctx, -num, item, variant, delta=True, role='makers', trial_run_only=trial_type)
 
 bot.run(get_bot_token())
