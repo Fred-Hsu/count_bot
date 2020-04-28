@@ -716,10 +716,14 @@ async def sudo(ctx, member: discord.Member, command: str, *args):
 Only admins can execute sudo. 'member' may be @alias (in the inventory room) or 'alias' alone (in DM channels). \
 Incorrect spelling of 'alias' will cause the command to fail. Note that 'alias' is case-sensitive.
 
-sudo <member> count [total] [item] [variant]
 sudo <member> add [total] [item] [variant]
-sudo <member> reset [item] [variant]
+sudo <member> count [total] [item] [variant]
 sudo <member> remove [item] [variant]
+sudo <member> reset [item] [variant]
+sudo <member> collect add [total] [item] [variant]
+sudo <member> collect count [total] [item] [variant]
+sudo <member> collect remove [item] [variant]
+sudo <member> collect reset [item] [variant]
 """
     sudo_author = ctx.message.author
     print('Command: sudo {0} {1} {2} ({3})'.format(member, command, args, sudo_author.display_name))
@@ -734,8 +738,12 @@ sudo <member> remove [item] [variant]
         # Useful for adding admins
         await ctx.send("{0}, # {1}".format(member.id, member.display_name))
         return
+    elif command == 'collect':
+        command = command + ' ' + args[0]
+        args = args[1:]
 
-    if command not in ('count', 'remove', 'add', 'reset'):
+    if command not in ('count', 'remove', 'add', 'reset',
+                       'collect count', 'collect remove', 'collect add', 'collect reset'):
         await ctx.send("❌  command '{0}' not supported by sudo".format(command))
         return
 
@@ -914,7 +922,5 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
     await ctx.send("Command not yet implemented...")
     # FIXME implement 'collect from'
     # await _count(ctx, num, item, variant, delta=True)
-
-# FIXME - add 'sudo collection...'
 
 bot.run(get_bot_token())
