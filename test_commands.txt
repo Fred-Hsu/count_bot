@@ -167,3 +167,8 @@ collect remove all
 . Error - try removing something that has already been removed
 collect remove prusa pet
 collect remove prusa
+
+. More sudo commands
+sudo justin add 3 viso prusa
+sudo justin add 3 prusa petg
+sudo justin reset visor prusa

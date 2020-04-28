@@ -29,6 +29,7 @@ INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this text channel,
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # file name of the product inventory attachment in a sync point
+CODE_VERSION = '0.1'
 
 USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP = {
     'admins': ADMIN_ROLE_NAME,
@@ -131,11 +132,13 @@ async def on_command_error(ctx, error):
 async def _post_sync_point_to_trans_log():
     s_buf = io.StringIO()
     maker_inventory_df.to_csv(s_buf, index=False)
+    s_buf.write('\n')
+    collector_inventory_df.to_csv(s_buf, index=False)
+    s_buf.write('\n')
+    s_buf.write("version\n'{0}'\n".format(CODE_VERSION))
     s_buf.seek(0)
     file = discord.File(s_buf, PRODUCT_CSV_FILE_NAME)
     sync_text = '✅ ' + "Bot restarted: sync point"
-
-    # FIXME - only writes maker inventory. Not yet collector inventory
 
     if DEBUG_DISABLE_STARTUP_INVENTORY_SYNC:
         # FIXME - remove hardcoded user...
@@ -195,12 +198,10 @@ def _rebuild_dataframe_from_log(last_action, df_read):
         if num is not None:
             rows.append((user_id, item, variant, num))
 
-    # FIXME - only reads maker inventory. Not yet collector inventory. Remove when we never pass None in
-    if df_read is not None:
-        for index, row in df_read.iterrows():
-            key = (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT])
-            if key not in last_action:
-                rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT]))
+    for index, row in df_read.iterrows():
+        key = (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT])
+        if key not in last_action:
+            rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT]))
     pprint(rows)
 
     column_names = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
@@ -223,6 +224,7 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
         'collectors': {},
     }
     sync_point_maker_df = None
+    sync_point_collector_df = None
 
     # Channel history is returned in reverse chronological order.
     # Troll through these entries and process only transaction log-type messages posted by the bot itself.
@@ -244,10 +246,17 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
                 print('Internal error - wrong inventory file found. Continue trolling...')
                 continue
 
-            # FIXME - only reads maker inventory. Not yet collector inventory
-
             csv_mem = io.BytesIO(await product_att.read())
-            sync_point_maker_df = pd.read_csv(csv_mem)
+            csv_text = csv_mem.getvalue()
+            csv_text = str(csv_text, 'utf-8')
+
+            maker_text, collector_text, version = csv_text.split('\n\n', maxsplit=2)
+            # print(version)
+            # print(maker_text)
+            # print(collector_text)
+
+            sync_point_maker_df = pd.read_csv(io.StringIO(maker_text))
+            sync_point_collector_df = pd.read_csv(io.StringIO(collector_text))
             print("{:60} sync point - stop trolling".format(text))
             break
 
@@ -275,9 +284,10 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
     print('Maker df:')
     maker_df = _rebuild_dataframe_from_log(last_action_by_role['makers'], sync_point_maker_df)
 
+    print('Collector sync point:')
+    print(sync_point_collector_df.to_string(index=False))
     print('Collector df:')
-    # FIXME - only reads maker inventory. Not yet collector inventory
-    collector_df = _rebuild_dataframe_from_log(last_action_by_role['collectors'], None)
+    collector_df = _rebuild_dataframe_from_log(last_action_by_role['collectors'], sync_point_collector_df)
 
     global maker_inventory_df
     global collector_inventory_df
@@ -380,7 +390,11 @@ count 20 prusa - shortcut to update a single variant of prusa shield you make.
     await _count(ctx, total, item, variant)
 
 async def _count(ctx, total: int = None, item: str = None, variant: str = None, delta: bool = False, role='makers'):
-    """Internal implementation of count, add and reset."""
+    """
+    Internal implementation of count, add and reset.
+    This is one of the very few fundamental methods that produces a command record in the transaction log.
+    Many user commands get translated into this basic command record to perform actual changes to the inventory.
+    """
 
     if isinstance(total, str):
         # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
@@ -503,7 +517,11 @@ remove all - special command to wipe out all records of this user.
     await _remove(ctx, item, variant)
 
 async def _remove(ctx, item: str = None, variant: str = None, role='makers'):
-    """Internal implementation of 'remove'."""
+    """
+    Internal implementation of 'remove'.
+    This is one of the very few fundamental methods that produces a command record in the transaction log.
+    Many user commands get translated into this basic command record to perform actual changes to the inventory.
+    """
 
     df = USER_ROLE_HUMAN_TO_INVENTORY_DF_MAP[role]
 
@@ -699,6 +717,8 @@ Only admins can execute sudo. 'member' may be @alias (in the inventory room) or 
 Incorrect spelling of 'alias' will cause the command to fail. Note that 'alias' is case-sensitive.
 
 sudo <member> count [total] [item] [variant]
+sudo <member> add [total] [item] [variant]
+sudo <member> reset [item] [variant]
 sudo <member> remove [item] [variant]
 """
     sudo_author = ctx.message.author
@@ -715,7 +735,7 @@ sudo <member> remove [item] [variant]
         await ctx.send("{0}, # {1}".format(member.id, member.display_name))
         return
 
-    if command not in ('count', 'remove'):
+    if command not in ('count', 'remove', 'add', 'reset'):
         await ctx.send("❌  command '{0}' not supported by sudo".format(command))
         return
 
@@ -895,8 +915,6 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
     # FIXME implement 'collect from'
     # await _count(ctx, num, item, variant, delta=True)
 
-# FIXME - add sudo add and sudo reset
-# FIXME - syncpoint can't handle 'collect' commands yet
 # FIXME - add 'sudo collection...'
 
 bot.run(get_bot_token())
