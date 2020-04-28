@@ -25,11 +25,22 @@ from my_tokens import get_bot_token
 
 logging.basicConfig(level=logging.INFO)
 
-INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this text channel, or DM channels
+# CONFIGURATION tailored to a particular Discord server (guild).
+INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this official text channel, plus personal DM channels
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
-PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # file name of the product inventory attachment in a sync point
-CODE_VERSION = '0.1'
+PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
+CODE_VERSION = '0.1'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
+
+# DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
+# TODO - Probably should turn into real config parameter stored in _discord_config_no_commit.txt
+DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = True  # Disable the inventory sync point recorded at bot start-up
+DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = True  # Disable any official inventory posting when testing in DM channel
+DEBUG_PRETEND_DM_IS_INVENTORY = True  # Make interactions in DM channel mimic behavior seen in official inventory
+
+# FIXME - add 'update time' column so that we know which entries are stale
+# FIXME - 'report' writes one single message for all tables it reports
+# FIXME - 'report' doesn't yet show collected items
 
 USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP = {
     'admins': ADMIN_ROLE_NAME,
@@ -58,11 +69,6 @@ maker_inventory_df = pd.DataFrame()  # Stores what makers have made, but not yet
 collector_inventory_df = pd.DataFrame()  # Stores what collectors have collected from makers
 
 USER_ROLE_HUMAN_TO_INVENTORY_DF_MAP = {}
-
-# Leave all these debug flags FALSE for production run.
-DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = True  # Disable the inventory sync point recorded at bot start-up
-DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = True  # Disable any official inventory posting when testing in DM channel
-DEBUG_PRETEND_DM_IS_INVENTORY = True  # Make interactions in DM channel mimic behavior seen in official inventory
 
 ALIAS_MAPS = {}
 ALL_ITEM_VARIANT_COMBOS = []
@@ -953,7 +959,5 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
         await _count(ctx, -num, item, variant, delta=True, role='makers', trial_run_only=trial_type)
         ctx.message.author = collector_author
         await _count(ctx, num, item, variant, delta=True, role='collectors', trial_run_only=trial_type)
-
-# FIXME - 'report' doesn't yet show collected items
 
 bot.run(get_bot_token())
