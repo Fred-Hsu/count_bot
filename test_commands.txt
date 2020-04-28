@@ -191,3 +191,4 @@ collect from justin -150 prusa pla
 
 . 'collect from'
 collect from justin 5 prusa pla
+collect from justin -5 prusa pla
