@@ -239,6 +239,9 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
         if not text.startswith('✅ '):
             continue
 
+        if text.endswith(' (from DM chat)'):
+            text = text[:-15]
+
         if text.endswith('sync point'):
             if not msg.attachments:
                 print('Internal error - found a syncpoint without attachment. Continue trolling...')
@@ -950,5 +953,7 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
         await _count(ctx, -num, item, variant, delta=True, role='makers', trial_run_only=trial_type)
         ctx.message.author = collector_author
         await _count(ctx, num, item, variant, delta=True, role='collectors', trial_run_only=trial_type)
+
+# FIXME - 'report' doesn't yet show collected items
 
 bot.run(get_bot_token())
