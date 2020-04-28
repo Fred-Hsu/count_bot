@@ -960,4 +960,5 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
         ctx.message.author = collector_author
         await _count(ctx, num, item, variant, delta=True, role='collectors', trial_run_only=trial_type)
 
-bot.run(get_bot_token())
+if __name__ == '__main__':
+    bot.run(get_bot_token())
