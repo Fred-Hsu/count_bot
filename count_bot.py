@@ -110,6 +110,9 @@ bot = commands.Bot(
 class NotEntitledError(commands.errors.CommandError):
     pass
 
+class NegativeCount(commands.errors.CommandError):
+    pass
+
 @bot.listen()
 async def on_command_error(ctx, error):
     """
@@ -119,7 +122,7 @@ async def on_command_error(ctx, error):
 
     This is a global error handler for all commands. Each command can also provide its own specific error handler.
     """
-    if isinstance(error, NotEntitledError):
+    if isinstance(error, (NotEntitledError, NegativeCount)):
         pass
     elif isinstance(error, (commands.errors.BadArgument, commands.errors.MissingRequiredArgument)):
         await ctx.send("❌  I don't completely understand. See help.")
@@ -454,20 +457,23 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
     if not variant:
         return
 
+    current_count = 0
     if delta:
         # this is not an update of current count, but a delta addition to current count.
         cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item) & (df[COL_VARIANT] == variant)
         rows = df[cond]
         if len(rows) == 1:
             row = rows.iloc[0]
-            total += row[COL_COUNT]
+            current_count = row[COL_COUNT]
+            total += current_count
+
+    if total < 0:
+        await ctx.send("❌  This results in a negative count of '{0}'. Current '{1}' count is {2}.".format(
+            total, role, current_count))
+        raise NegativeCount()
 
     if trial_run_only:
         return
-
-    if total < 0:
-        await ctx.send("Resulting negative count '{0}' is recorded as 0 instead.".format(total))
-        total = 0
 
     txt = '{0} {1} {2}'.format(total, item, variant)
     await _post_user_record_to_trans_log(ctx, 'count' if role == 'makers' else 'collect count', txt)
@@ -917,10 +923,18 @@ async def collect_from(ctx, maker: discord.Member, num: int, item: str, variant:
 This is like a banking transfer. A collector transfers n items from a a maker's inventory to the collector's. \
 The {maker} can be the collector herself. Everyone can play both roles: makers and collectors at different times \
 of the day. The collector word is final. If the maker's inventory is lower than what the collector claims, \
-the maker's inventory count is simply reduced to 0. Unlike commands such as 'count' and 'add', this command \
-requires the user to specify both item and variant. These values cannot be defaulted.
+this command will fail.
+
+In the case of discrepancy, a collector should look up the maker's current inventory \
+the 'report' command, then transfer the specific number of items. The collector can then make manual corrections \
+in her own collection bucket using 'collect add'.
+
+Unlike commands such as 'count' and 'add', this command requires the user to specify both item and variant. \
+These values cannot be defaulted.
 
 Type 'help count' to see descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
+
+'maker' may be @alias (in the inventory room) or 'alias' alone (in DM channels).
 
 collect from @Freddie 20 prusa PETG: collector receives 20 items from a maker.
 collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker.
@@ -932,9 +946,9 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
     # Make a trial run to bail out early if args are incorrect, so that we can guarantee the success of the
     # actual transfer which consists of two separate commands, in a pseudo-atomic fashion.
     for trial_type in (True, False):
-        ctx.message.author = collector_author
-        await _count(ctx, num, item, variant, delta=True, role='collectors', trial_run_only=trial_type)
         ctx.message.author = maker
         await _count(ctx, -num, item, variant, delta=True, role='makers', trial_run_only=trial_type)
+        ctx.message.author = collector_author
+        await _count(ctx, num, item, variant, delta=True, role='collectors', trial_run_only=trial_type)
 
 bot.run(get_bot_token())

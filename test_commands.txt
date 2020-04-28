@@ -182,6 +182,12 @@ sudo justin collect remove visor prusa
 collect from justin 20
 collect from justin 20 prusa
 
-. collect 'from' - Freddie doesn't have 50 shields - the source gets reset to 0 instead of negative number
-collect from justin 50 prusa pla
+. Error - negative counts
+count -10 prusa petg
 
+. Error - collect 'from' - Freddie doesn't have 50 shields - the source gets reset to 0 instead of negative number
+collect from justin 150 prusa pla
+collect from justin -150 prusa pla
+
+. 'collect from'
+collect from justin 5 prusa pla
