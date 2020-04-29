@@ -4,7 +4,7 @@ Discoard bot that keeps count of current numbers of face shields in each person'
 
 The basic idea behind Count Bot is vey simple. Don't be fooled by the number of commands you see when you type 'help'. The basic workflow involves only three commands: **count**, **collect** and **report**. The rest of commands exist to cover rare use cases. 
 
-### Makers ###
+### For makers ###
 
 Most folks in the group are printing head bands, punching sheets, and supporting pieces. You are makers. 
 Each maker has got a box of **items** you have produced. Item types include: **Prusa** head band, 
@@ -16,7 +16,7 @@ any items you make yet. It will also send a help page for the command 'count' to
 
 <pre>
 Freddie:
-<big><b>count</b></big>
+<b>count</b>
 
 Count Bot:
 ❌  You have not recorded any item types yet. See help.
@@ -27,7 +27,7 @@ Verkstan head bands with PLA, and you currently have 12 printed.
 
 <pre>
 Freddie:
-<big><b>count 12 verkstan pla</b></big>
+<b>count 12 verkstan pla</b>
 
 Count Bot:
 ✅ @Freddie: count 12 verkstan PLA
@@ -41,7 +41,7 @@ will all work. Say, you printed more head bands. Now you count 24.
 
 <pre>
 Freddie:
-<big><b>count 24</b></big>
+<b>count 24</b>
 
 Count Bot:
 ✅ @Freddie: count 24 verkstan PLA
@@ -51,15 +51,27 @@ count   item       variant
 
 That's it. Just keep updating your total count as you print more. Perhaps once a day. If you only make one 
 type of item, you don't even need to tell Count Bot what you make anymore. Just keep updating that one current count.
+Now, if you make more than one item or variant types, then you need to be more specific. But that's for another
+longer guide. Try typing '**help count**', and see what Count Bot tells you. 
 
+## Public inventory channel vs private DM channel
 
+You can talk to Count Bot from either the public inventory channel **#bot-inventory**, or from your private
+**DM** (direct message) channel. Count Bot in fact will redirect some lengthy replies to your DM channel, 
+even when you talk to it in the public channel.
 
-
-
-
-
+However, Count Bot will always leave a record in the public channel, whenever you make a counting transaction,
+as you have done earlier. All records are marked with a green checkmark, ✅. This lets the rest of the team
+know about your progress. And the bot in fact uses these records as its permanent database. 
 
 ### Collectors ###
+
+Collectors are folks who collect printed head bands and the rest from makers. Collectors then make delivery trips
+to hospitals and other healthcare organizations. Collectors have a Discord role of '**collector**' formally.
+Only users with that role may issue collector commands shown here. 
+
+Say, you are a collector. And Freddie just dropped off 24 verkstan head bands.  
+
 
 ### Bot Admins ###
 
