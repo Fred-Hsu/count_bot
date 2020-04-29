@@ -1,6 +1,6 @@
 Discoard bot that keeps count of current numbers of face shields in each person's possession until the next drop.
 
-## 20-minute guide to using Count Bot
+## 10-minute guide to using Count Bot
 
 The basic idea behind Count Bot is vey simple. Don't be fooled by the number of commands you see when you type 'help'. The basic workflow involves only three commands: **count**, **collect** and **report**. The rest of commands exist to cover rare use cases. 
 
