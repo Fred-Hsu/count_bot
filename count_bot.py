@@ -26,7 +26,7 @@ from my_tokens import get_bot_token
 logging.basicConfig(level=logging.INFO)
 
 # CONFIGURATION tailored to a particular Discord server (guild).
-INVENTORY_CHANNEL = os.getenv("COUNT_BOT_INVENTORY_CHANNEL", 'test-sandbox')  # The bot only listens to this official text channel, plus personal DM channels
+INVENTORY_CHANNEL = os.getenv("COUNT_BOT_INVENTORY_CHANNEL", 'bot-inventory')  # The bot only listens to this official text channel, plus personal DM channels
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
