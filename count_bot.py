@@ -26,7 +26,7 @@ from my_tokens import get_bot_token
 logging.basicConfig(level=logging.INFO)
 
 # CONFIGURATION tailored to a particular Discord server (guild).
-INVENTORY_CHANNEL = 'test-sandbox'  # The bot only listens to this official text channel, plus personal DM channels
+INVENTORY_CHANNEL = os.getenv("COUNT_BOT_INVENTORY_CHANNEL", 'test-sandbox')  # The bot only listens to this official text channel, plus personal DM channels
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
@@ -481,7 +481,7 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
         raise NegativeCount()
 
     if trial_run_only:
-        return
+        return total, item, variant
 
     txt = '{0} {1} {2}'.format(total, item, variant)
     await _post_user_record_to_trans_log(ctx, 'count' if role == 'makers' else 'collect count', txt)
@@ -963,4 +963,5 @@ collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker
         ctx.message.author = collector_author
         await _count(ctx, num, item, variant, delta=True, role='collectors', trial_run_only=trial_type)
 
-bot.run(get_bot_token())
+if __name__ == '__main__':
+    bot.run(get_bot_token())
