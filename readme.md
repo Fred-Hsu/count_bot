@@ -1,10 +1,30 @@
 Discoard bot that keeps count of current numbers of face shields in each person's possession until the next drop.
 
-## How to use Count Bot
+## 10-minute guide to using Count Bot
 
-The basic idea behind Count Bot is vey simple. Don't be fooled by the number of commands you see when you type 'help'. The basic workflow involves only three commands: **count**, **collect** and **report**. The rest of commands exist to cover rare use cases.
+The basic idea behind Count Bot is vey simple. Don't be fooled by the number of commands you see when you type 'help'. The basic workflow involves only three commands: **count**, **collect** and **report**. The rest of commands exist to cover rare use cases. 
+
+### Makers ###
+
+Most folks in the group are printing head bands, punching sheets, and supporting pieces. You are makers. 
+Each maker has got a box of **items** you have produced. Item types include: **Prusa** head band, 
+**Verkstan** head band, **Visor** sheet, etc. Each item has **variants**. For head bands, they are the materials
+used, so **PETG** and **PLA**. For visors, they are **prusa** style and **verkstan** style.
+
+Go to the **#bot-inventory** channel, and type: **count**. Count Body will tell you that you have not recorded
+any items you make yet. It will also send a help page for the command 'count' to a 
+
+    Freddie     Today at 4:37 PM
+    **count**
+    
+    Count Bot   Today at 4:37 PM
+    ❌  You have not recorded any item types yet. See help.
 
 
+
+### Collectors ###
+
+### Bot Admins ###
 
 
 
