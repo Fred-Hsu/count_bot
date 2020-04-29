@@ -147,11 +147,17 @@ verkstan PETG = 30 TOTAL
  30  Nicole
 </pre>
 
+## The rest of user guide
 
+(to be written)
+
+### Getting help
+
+(to be written)
 
 ### Bot Admins ###
 
-
+(to be written)
 
 ## How to deploy Count Bot
 
