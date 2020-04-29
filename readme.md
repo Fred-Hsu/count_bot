@@ -14,11 +14,48 @@ used, so **PETG** and **PLA**. For visors, they are **prusa** style and **verkst
 Go to the **#bot-inventory** channel, and type: **count**. Count Body will tell you that you have not recorded
 any items you make yet. It will also send a help page for the command 'count' to a 
 
-    Freddie     Today at 4:37 PM
-    **count**
-    
-    Count Bot   Today at 4:37 PM
-    ❌  You have not recorded any item types yet. See help.
+<pre>
+Freddie:
+<b>count</b>
+
+Count Bot:
+❌  You have not recorded any item types yet. See help.
+</pre>
+
+Tell Countbot about the item you make. Most makers make only one item/variant. Let's say that you print 
+Verkstan head bands with PLA, and you currently have 12 printed. 
+
+<pre>
+Freddie:
+<b>count 12 verkstan pla</b>
+
+Count Bot:
+✅ @Freddie: count 12 verkstan PLA
+count   item       variant
+   12   verkstan   PLA
+</pre>
+
+There is no need to capitalize anything, but you can if you insist. You also od not need to spell out the full
+word 'verkstan'. The bot knows what you mean if you give him at least three letters. So, 'ver', 'verks' and 'verkst',
+will all work. Say, you printed more head bands. Now you count 24.
+
+<pre>
+Freddie:
+<b>count 24</b>
+
+Count Bot:
+✅ @Freddie: count 24 verkstan PLA
+count   item       variant
+   24   verkstan   PLA
+</pre>
+
+That's it. Just keep updating your total count as you print more. Perhaps once a day. If you only make one 
+type of item, you don't even need to tell Count Bot what you make anymore. Just keep updating that one current count.
+
+
+
+
+
 
 
 

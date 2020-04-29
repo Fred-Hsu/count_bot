@@ -362,7 +362,6 @@ async def _post_user_record_to_trans_log(ctx, command_text, detail_text):
         else:
             await ch.send('✅ ' + trans_text + ' (from DM chat)')
     else:
-        await ctx.send("Command processed.")
         await ctx.send('✅ ' + trans_text)
 
 @bot.command(
