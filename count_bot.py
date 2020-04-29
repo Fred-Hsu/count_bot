@@ -38,7 +38,6 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - 'report' doesn't yet show collected items
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version.
 
 USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP = {
@@ -54,9 +53,9 @@ ITEM_CHOICES = {
 }
 
 VARIANT_CHOICES = {
-    'verkstan':  ["PETG", "PLA"],
     'prusa':     ["PETG", "PLA"],
-    'visor':     ["verkstan", "prusa"],
+    'verkstan':  ["PETG", "PLA"],
+    'visor':     ["prusa", "verkstan"],
 }
 
 COL_USER_ID = 'user_id'
@@ -678,57 +677,89 @@ from the inventory channel or DM channel.
 """
     print('Command: report {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
 
-    df = maker_inventory_df
-    if not len(df):
+    maker = maker_inventory_df
+    collector = collector_inventory_df
+    if not len(maker) and not len(collector):
         await ctx.send('There are no records in the system yet.')
         return
 
-    if item:
-        item = await _resolve_item_name(ctx, item)
-        if not item:
-            return
-        df = df[df[COL_ITEM] == item]
+    async def filter_df(df, item, variant):
+        if item:
+            item = await _resolve_item_name(ctx, item)
+            if not item:
+                return pd.DataFrame().reindex_like(df)
+            df = df[df[COL_ITEM] == item]
 
-    if variant:
-        variant = await _resolve_item_name(ctx, variant)
-        if not variant:
-            return
-        df = df[df[COL_VARIANT] == variant]
+        if variant:
+            variant = await _resolve_item_name(ctx, variant)
+            if not variant:
+                return pd.DataFrame().reindex_like(df)
+            df = df[df[COL_VARIANT] == variant]
+        return df
 
-    if not len(df):
+    maker = await filter_df(maker, item, variant)
+    collector = await filter_df(collector, item, variant)
+
+    if not len(maker) and not len(collector):
         await ctx.send('No records found for specified item/variant')
         return
 
-    mapped = await _map_user_id_column_to_display_names(df)
+    async def regrouped(df):
+        mapped = await _map_user_id_column_to_display_names(df)
+        renamed = mapped.rename(columns={COL_USER_ID: "user"})
+        repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
+        groups = repivoted.groupby([COL_ITEM, COL_VARIANT], sort=True)
+        return groups
 
-    renamed = mapped.rename(columns={COL_USER_ID: "user"})
-    repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
-    groups = repivoted.groupby([COL_ITEM, COL_VARIANT], sort=True)
+    maker_groups = await regrouped(maker)
+    collector_groups = await regrouped(collector)
 
-    for_dm = []
-    for_inventory = []
-    for index, table in groups:
-        # Note that 'sparsify' works on all index columns, except for the very last index column.
-        ordered = table.sort_index('columns')
-        total = ordered[COL_COUNT].sum()
-        total_line = "{0} {1} = {2} TOTAL".format(index[0], index[1], total)
+    def get_group(g, key):
+        if key in g.groups:
+            return g.get_group(key)
+        return None
 
-        for_dm.append("```{0}\n{1}```".format(total_line, ordered.to_string(index=False, header=False)))
-        for_inventory.append(total_line)
+    total_table = pd.DataFrame(columns=[COL_ITEM, COL_VARIANT, "TOTAL", "maker", "collector"])
+
+    for (com_item, com_variant) in ALL_ITEM_VARIANT_COMBOS:
+        maker_table = get_group(maker_groups, (com_item, com_variant))
+        collector_table = get_group(collector_groups, (com_item, com_variant))
+
+        maker_total = maker_table[COL_COUNT].sum() if maker_table is not None else 0
+        collector_total = collector_table[COL_COUNT].sum() if collector_table is not None else 0
+        grand_total = maker_total + collector_total
+        if not grand_total:
+            continue
+        total_table.loc[len(total_table)] = [com_item, com_variant, grand_total, maker_total, collector_total]
+
+    def process_groups(groups):
+        processed = []
+        for index, table in groups:
+            # Note that 'sparsify' works on all index columns, except for the very last index column.
+            ordered = table.sort_index('columns')
+            total = ordered[COL_COUNT].sum()
+            total_line = "{0} {1} = {2} TOTAL".format(index[0], index[1], total)
+            processed.append("```{0}\n{1}```".format(total_line, ordered.to_string(index=False, header=False)))
+        return processed
+
+    maker_processed = process_groups(maker_groups)
+    collector_processed = process_groups(collector_groups)
+
+    detailed_breakdown = ''
+    for processed_label, processed in (('Makers', maker_processed), ('Collectors', collector_processed)):
+        detailed_breakdown += processed_label
+        for entry in processed:
+            detailed_breakdown += entry
 
     if ctx.message.channel.type == discord.ChannelType.private and not DEBUG_PRETEND_DM_IS_INVENTORY:
-        msg = "Summary:\n```{0}```".format('\n'.join(for_inventory))
-        msg += "Details:\n"
-        for txt in for_dm:
-            msg += txt
+        msg = "Summary:\n```{0}```".format(total_table.to_string(index=False))
+        msg += detailed_breakdown
         await ctx.send(msg)
     else:
-        msg = "Summary shown here. Detailed report sent to your DM channel.\n```{0}```".format('\n'.join(for_inventory))
+        msg = "Summary shown here. Detailed report sent to your DM channel.\n```{0}```".format(total_table.to_string(index=False))
         await ctx.send(msg)
-
-        msg = "Detailed report: {0} {1}\n".format(item or '', variant or '')
-        for txt in for_dm:
-            msg += txt
+        msg = "Detailed breakdown: {0} {1}\n".format(item or '', variant or '')
+        msg += detailed_breakdown
         await ctx.message.author.send(msg)
 
 async def _user_has_role(user, role_name):
