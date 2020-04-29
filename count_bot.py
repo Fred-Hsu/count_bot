@@ -34,13 +34,12 @@ CODE_VERSION = '0.1'  # Increment this whenever the schema of persisted inventor
 
 # DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
 # TODO - Probably should turn into real config parameter stored in _discord_config_no_commit.txt
-DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = True  # Disable the inventory sync point recorded at bot start-up
-DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = True  # Disable any official inventory posting when testing in DM channel
-DEBUG_PRETEND_DM_IS_INVENTORY = True  # Make interactions in DM channel mimic behavior seen in official inventory
+DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point recorded at bot start-up
+DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
+DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - add 'update time' column so that we know which entries are stale
-# FIXME - 'report' writes one single message for all tables it reports
 # FIXME - 'report' doesn't yet show collected items
+# FIXME - add 'update time' column so that we know which entries are stale. Increment version.
 
 USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP = {
     'admins': ADMIN_ROLE_NAME,
@@ -677,7 +676,6 @@ Every time a report command is used, a brief summary is posted in the inventory,
 and the actual report is sent to the user's own DM channel, regardless of whether the report was requested \
 from the inventory channel or DM channel.
 """
-
     print('Command: report {0} {1} ({2})'.format(item, variant, ctx.message.author.display_name))
 
     df = maker_inventory_df
@@ -719,14 +717,19 @@ from the inventory channel or DM channel.
         for_inventory.append(total_line)
 
     if ctx.message.channel.type == discord.ChannelType.private and not DEBUG_PRETEND_DM_IS_INVENTORY:
+        msg = "Summary:\n```{0}```".format('\n'.join(for_inventory))
+        msg += "Details:\n"
         for txt in for_dm:
-            await ctx.send(txt)
+            msg += txt
+        await ctx.send(msg)
     else:
-        await ctx.send('Summary shown here. Detailed report sent to your DM channel.')
-        await ctx.send("```{0}```".format('\n'.join(for_inventory)))
-        await ctx.message.author.send("Detailed report: {0} {1}".format(item or '', variant or ''))
+        msg = "Summary shown here. Detailed report sent to your DM channel.\n```{0}```".format('\n'.join(for_inventory))
+        await ctx.send(msg)
+
+        msg = "Detailed report: {0} {1}\n".format(item or '', variant or '')
         for txt in for_dm:
-            await ctx.message.author.send(txt)
+            msg += txt
+        await ctx.message.author.send(msg)
 
 async def _user_has_role(user, role_name):
     member = await _map_dm_user_to_member(user)
