@@ -288,6 +288,12 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
     pprint(last_action_by_role)
     updates_since_sync_point = len(last_action_by_role['collectors']) > 1 or len(last_action_by_role['makers']) > 1
 
+    if sync_point_maker_df is None:
+        sync_point_maker_df = pd.DataFrame(columns=[COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT])
+
+    if sync_point_collector_df is None:
+        sync_point_collector_df = pd.DataFrame(columns=[COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT])
+
     print('  --- rebuilt inventory --')
     print('Maker sync point:')
     print(sync_point_maker_df.to_string(index=False))
