@@ -16,7 +16,7 @@ any items you make yet. It will also send a help page for the command 'count' to
 
 <pre>
 Freddie:
-<b>count</b>
+<big><b>count</b></big>
 
 Count Bot:
 ❌  You have not recorded any item types yet. See help.
@@ -27,7 +27,7 @@ Verkstan head bands with PLA, and you currently have 12 printed.
 
 <pre>
 Freddie:
-<b>count 12 verkstan pla</b>
+<big><b>count 12 verkstan pla</b></big>
 
 Count Bot:
 ✅ @Freddie: count 12 verkstan PLA
@@ -41,7 +41,7 @@ will all work. Say, you printed more head bands. Now you count 24.
 
 <pre>
 Freddie:
-<b>count 24</b>
+<big><b>count 24</b></big>
 
 Count Bot:
 ✅ @Freddie: count 24 verkstan PLA
