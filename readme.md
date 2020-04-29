@@ -70,7 +70,26 @@ Collectors are folks who collect printed head bands and the rest from makers. Co
 to hospitals and other healthcare organizations. Collectors have a Discord role of '**collector**' formally.
 Only users with that role may issue collector commands shown here. 
 
-Say, you are a collector. And Freddie just dropped off 24 verkstan head bands.  
+Say, you are a collector (Nicole). And Freddie just dropped off 24 verkstan head bands. You can transfer 
+these 24 items from Freddie's box to your collector box. This leaves Freddie with 0 Verkstan head band in his 
+maker box.
+
+<pre>
+Nicole:
+<b>collect from @Freddie 24 ver pla</b>
+
+Count Bot:
+✅ @Nicole: collect count 24 verkstan PLA
+ count  item       variant
+    24  verkstan   PLA
+    50  visor       prusa
+ 
+✅ @Freddie: count 0 verkstan PLA
+ count  item       variant
+     0  verkstan   PLA
+</pre>
+     
+       
 
 
 ### Bot Admins ###

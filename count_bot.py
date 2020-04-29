@@ -38,6 +38,7 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
+# FIXME - add 'sudo {collector} collect from {maker} ... need to resolve {maker} reference explicitly in code
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version.
 
 USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP = {
