@@ -1,6 +1,6 @@
 Discoard bot that keeps count of current numbers of face shields in each person's possession until the next drop.
 
-## 10-minute guide to using Count Bot
+## 20-minute guide to using Count Bot
 
 The basic idea behind Count Bot is vey simple. Don't be fooled by the number of commands you see when you type 'help'. The basic workflow involves only three commands: **count**, **collect** and **report**. The rest of commands exist to cover rare use cases. 
 
@@ -82,13 +82,37 @@ Count Bot:
 ✅ @Nicole: collect count 24 verkstan PLA
  count  item       variant
     24  verkstan   PLA
-    50  visor       prusa
+    50  verkstan   PETG
  
 ✅ @Freddie: count 0 verkstan PLA
  count  item       variant
      0  verkstan   PLA
 </pre>
-     
+
+Every collector may also have her own maker box. When playing the maker role, a collector can check her 
+maker box by issuing a single word: **count**. So Nicole is punching Verkstan visor sheets.
+
+<pre>
+Nicole:
+<b>count</b>
+
+Count Bot:
+ count  item    variant
+    50  visor   verkstan
+</pre>
+
+Similarly, she can check her collector box by issuing a single word: **collect**.
+
+<pre>
+Nicole:
+<b>collect</b>
+
+Count Bot:
+ count  item       variant
+    24  verkstan   PLA
+    50  verkstan   PETG
+</pre>
+
        
 
 
