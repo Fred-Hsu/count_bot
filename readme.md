@@ -54,7 +54,7 @@ type of item, you don't even need to tell Count Bot what you make anymore. Just 
 Now, if you make more than one item or variant types, then you need to be more specific. But that's for another
 longer guide. Try typing '**help count**', and see what Count Bot tells you. 
 
-## Public inventory channel vs private DM channel
+### Public inventory channel vs private DM channel
 
 You can talk to Count Bot from either the public inventory channel **#bot-inventory**, or from your private
 **DM** (direct message) channel. Count Bot in fact will redirect some lengthy replies to your DM channel, 
@@ -89,6 +89,8 @@ Count Bot:
      0  verkstan   PLA
 </pre>
 
+### Find out who has what
+
 Every collector may also have her own maker box. When playing the maker role, a collector can check her 
 maker box by issuing a single word: **count**. So Nicole is punching Verkstan visor sheets.
 
@@ -110,10 +112,41 @@ Nicole:
 Count Bot:
  count  item       variant
     24  verkstan   PLA
-    50  verkstan   PETG
+    30  verkstan   PETG
 </pre>
 
-       
+Anyone can ask Count Bot to spit out a report on the current state of the inventory. 
+Just ask for: **report**.
+
+<pre>
+Freddie:
+<b>report</b>
+
+Count Bot:
+<b>Summary:</b>
+     item   variant   TOTAL   maker   collector
+ verkstan       PLA      44      20          24
+ verkstan      PETG      30       0          30
+ visor     verkstan      50      50           0
+ 
+<b>Makers</b>
+
+verkstan PLA = 20 TOTAL
+  0  Freddie
+ 20  Vinny
+
+visor verkstan = 50 TOTAL
+  50   Nicole
+
+<b>Collectors</b>
+
+verkstan PLA = 24 TOTAL
+ 24  Nicole
+
+verkstan PETG = 30 TOTAL
+ 30  Nicole
+</pre>
+
 
 
 ### Bot Admins ###
