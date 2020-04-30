@@ -38,8 +38,17 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
+# FIXME - add collectors: Katy
+# FIXME - help page should point to github readme.md
+# FIXME - add todo list to readme.md
+# FIXME - add earsavers
+# FIXME - try to justify 'user' column in 'report'. If can't justify only this, then pad strings to a long length up to 'Brandy Belenky (supply chain)'
 # FIXME - add 'sudo {collector} collect from {maker} ... need to resolve {maker} reference explicitly in code
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version.
+# FIXME - add 'delivered' command and a hospital bucket
+# FIXME - maybe addd assembly as an item type
+# FIXME - look into google sheet API to update it automatically. https://developers.google.com/sheets/api/guides/concepts
+# FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
 
 USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP = {
     'admins': ADMIN_ROLE_NAME,
