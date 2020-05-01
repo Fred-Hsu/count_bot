@@ -68,6 +68,10 @@ VARIANT_CHOICES = {
     'earsaver':  [" "],
 }
 
+ITEMS_WITH_NO_VARIANTS = {
+    'earsaver',
+}
+
 COL_USER_ID = 'user_id'
 COL_ITEM = 'item'
 COL_VARIANT = 'variant'
@@ -192,6 +196,12 @@ def _get_inventory_channel():
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
 
 async def _process_one_trans_record(member, last_action, text, item, variant, command):
+
+    if variant in ITEMS_WITH_NO_VARIANTS:
+        command += ' ' + item
+        item = variant
+        variant = " "
+
     key = (member.id, item, variant)
     if key in last_action:
         print("{:60} {}".format(text, 'superseded by count and remove'))
