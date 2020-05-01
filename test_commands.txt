@@ -3,9 +3,16 @@
 
 . Errors - bad commands or table is empty
 count
-count wrong arg
+count wrong arg1_type
 count 1
 count 1 wrong wrong
+count 1 prusa wrong
+
+. Errors - uses variant name for item name
+count 1 petg prusa
+
+. Errors - variant does not belong to item
+count 1 visor petg
 
 . Adding first row
 count 12 verkstan petg
@@ -26,7 +33,7 @@ count 17
 count 18 ver
 count 4 pru
 
-. Generate two variants (third row)
+. Generate another variant (third row)
 count 23 verkstan pla
 
 . Error - ambiguity in count update
@@ -106,9 +113,7 @@ report
 . Special sudo commands
 sudo Freddie id
 sudo justin id
-sudo jds2001 id
 sudo maggotbrain id
-sudo timothyjryan id
 
 . Find out about roles
 who are you
@@ -192,3 +197,22 @@ collect from justin -150 prusa pla
 . 'collect from'
 collect from justin 5 prusa pla
 collect from justin -5 prusa pla
+
+. Ear Saver - it has no variants
+count 55 earsaver
+count
+report
+count 77 ear
+
+. Error - extraneous variant
+count 22 ear extraneous_variant
+count 22 ear petg
+
+. remove
+add 3 earsaver
+reset earsaver
+remove earsaver
+
+
+
+

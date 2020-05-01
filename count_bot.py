@@ -38,11 +38,11 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
+# FIXME - prevent two bots from running against the same channel
 # FIXME - move INVENTORY_CHANNEL and related config params to my_token. They can all come from env vars, or from the locally-cached config file
 # FIXME - add collectors: Katy
 # FIXME - help page should point to github readme.md
 # FIXME - add todo list to readme.md
-# FIXME - add earsavers
 # FIXME - try to justify 'user' column in 'report'. If can't justify only this, then pad strings to a long length up to 'Brandy Belenky (supply chain)'
 # FIXME - add 'sudo {collector} collect from {maker} ... need to resolve {maker} reference explicitly in code
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version.
@@ -57,16 +57,19 @@ USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP = {
 }
 
 # Items are things that makers can print or build.
+# Use lower-case for item names.
 ITEM_CHOICES = {
     'verkstan':  "3D Verkstan head band",
     'prusa':     "Prusa head band",
     'visor':     "Transparency sheet",
+    'earsaver':  "Ear saver",
 }
 
 VARIANT_CHOICES = {
     'prusa':     ["PETG", "PLA"],
     'verkstan':  ["PETG", "PLA"],
     'visor':     ["prusa", "verkstan"],
+    'earsaver':  [" "],
 }
 
 COL_USER_ID = 'user_id'
@@ -83,9 +86,11 @@ ALIAS_MAPS = {}
 ALL_ITEM_VARIANT_COMBOS = []
 def _setup_aliases():
     for item, variants in VARIANT_CHOICES.items():
-        ALIAS_MAPS.update([(item[:i].lower(), item) for i in range(3, len(item)+1)])
+        ALIAS_MAPS[item.lower()] = item  # In case len is less than 3
+        ALIAS_MAPS.update([(item[:i].lower(), item) for i in range(3, len(item))])
         for variant in variants:
-            ALIAS_MAPS.update([(variant[:i].lower(), variant) for i in range(3, len(variant)+1)])
+            ALIAS_MAPS[variant.lower()] = variant  # In case len is less than 3
+            ALIAS_MAPS.update([(variant[:i].lower(), variant) for i in range(3, len(variant))])
             ALL_ITEM_VARIANT_COMBOS.append((item, variant))
 _setup_aliases()
 
@@ -341,12 +346,21 @@ async def _resolve_item_name(ctx, item):
         await ctx.send("❌  Item '{0}' is not something I know about. See help.".format(item))
         await ctx.send_help(ctx.command)
         return None
+    if item_name not in ITEM_CHOICES:
+        await ctx.send("❌  '{0}' is not valid item. See help.".format(item_name))
+        await ctx.send_help(ctx.command)
+        return None
     return item_name
 
-async def _resolve_variant_name(ctx, variant):
+async def _resolve_variant_name(ctx, item, variant):
     variant_name = ALIAS_MAPS.get(variant.lower())
     if not variant_name:
         await ctx.send("❌  Variant '{0}' is not something I know about. See help.".format(variant))
+        await ctx.send_help(ctx.command)
+        return None
+    variants = VARIANT_CHOICES.get(item)
+    if variant_name not in variants:
+        await ctx.send("❌  '{0}' is not valid variant of item '{1}'. See help.".format(variant_name, item))
         await ctx.send_help(ctx.command)
         return None
     return variant_name
@@ -387,6 +401,7 @@ and 'vis', 'viso', etc. to refer to the the full item and variant names. Item an
 verkstan    PETG or PLA
 prusa       PETG or PLA
 visor       verkstan or prusa
+earsaver
 
 count - shortcut to print out items under your possession.'.
 count 20 - shortcut to update a single item you make, to a total count of 20.
@@ -433,50 +448,83 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
     user_id = ctx.message.author.id
     cond = df[COL_USER_ID] == user_id
     found_num = sum(cond)
-    if total is None or not item or not variant:
+
+    if total is None:
+        # "count" without argument with existing inventory.
+
         if not found_num:
-            await ctx.send('❌  You have not recorded any item types yet. See help.')
+            await ctx.send('You have not recorded any item types yet.')
             await ctx.send_help(ctx.command)
             return
-        elif total is None:
-            # "count" without argument with existing inventory.
-            result = df[cond]
-            await _send_df_as_msg_to_user(ctx, result)
-            return
+
+        result = df[cond]
+        await _send_df_as_msg_to_user(ctx, result)
+        return
+
+    elif not item or not variant:
+        # Note that if item is None, then variant must also be None
+
+        # The user is updating count without fully specifying both item and variant args.
+        # Either variant is not provided, or both item and variant are not provided.
+        # Do a search to see if it is possible to narrow down recorded items to just one item.
+
+        if not item:
+            # Aka, Only count is specified.
+
+            if not found_num:
+                await ctx.send('❌  You have not recorded any item types yet. Cannot update count without a specific item.')
+                await ctx.send_help(ctx.command)
+                return
+
+            elif found_num > 1:
+                await ctx.send("❌  Found more than one type of item. Please be more specific with item type. "
+                    "Or use 'reset' to remove item types. See help.")
+                await _send_df_as_msg_to_user(ctx, df[cond])
+                await ctx.send_help(ctx.command)
+                return
+
+            # Fall through on purpose, to update count
+            pass
+
         else:
-            # The user is updating count without fully specifying both item and variant args.
-            # Either item is not provided, or both item and variant are not provided.
-            # Do a search to see if it is possible to narrow down recorded items to just one item.
-            if not item or not variant:
-                if item:
-                    # Variant is not specified.
-                    item = await _resolve_item_name(ctx, item)
-                    if not item:
-                        return
+            # Aka, Count and item are specified, Variant is not specified.
+            item = await _resolve_item_name(ctx, item)
+            if not item:
+                return
 
-                    cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item)
-                    found_num = sum(cond)
-                    # Fall through
+            # Change condition to add the item as a filter
+            cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item)
+            found_num = sum(cond)
 
-                # No item nor variant are specified.
-                if found_num == 1:
-                    # There is only one row in the record. Retrieve item and variant names from the single record.
-                    row = df[cond]
-                    item = row[COL_ITEM][0]
-                    variant = row[COL_VARIANT][0]
-                    # Fall through to normal code which updates the count
-                else:
-                    await ctx.send("❌  Found more than one types of items. Please be more specific. "
-                        "Or use 'reset' to remove item types. See help.")
-                    await _send_df_as_msg_to_user(ctx, df[cond])
-                    await ctx.send_help(ctx.command)
-                    return
+            # Some items have no variants
+            supported_variants = VARIANT_CHOICES.get(item)
+            if supported_variants == [" "]:
+                variant = " "
+
+            elif found_num == 0:
+                await ctx.send("❌  You have no recorded variant of type '{0}'. Please specify a variant.".format(item))
+                await _send_df_as_msg_to_user(ctx, df[cond])
+                await ctx.send_help(ctx.command)
+                return
+
+            elif found_num > 1:
+                await ctx.send("❌  Found more than one variant of item. Please be more specific with variant name. "
+                    "Or use 'reset' to remove item types. See help.")
+                await _send_df_as_msg_to_user(ctx, df[cond])
+                await ctx.send_help(ctx.command)
+                return
+
+        if found_num == 1:
+            # There is only one row in the record. Retrieve item and variant names from the single record.
+            row = df[cond]
+            item = row[COL_ITEM][0]
+            variant = row[COL_VARIANT][0]
 
     item = await _resolve_item_name(ctx, item)
     if not item:
         return
 
-    variant = await _resolve_item_name(ctx, variant)
+    variant = await _resolve_variant_name(ctx, item, variant)
     if not variant:
         return
 
@@ -620,7 +668,7 @@ async def _remove(ctx, item: str = None, variant: str = None, role='makers'):
     if not item:
         return
 
-    variant = await _resolve_item_name(ctx, variant)
+    variant = await _resolve_variant_name(ctx, item, variant)
     if not variant:
         return
 
@@ -707,7 +755,8 @@ from the inventory channel or DM channel.
             df = df[df[COL_ITEM] == item]
 
         if variant:
-            variant = await _resolve_item_name(ctx, variant)
+            # If variant exists, then item is also specified
+            variant = await _resolve_variant_name(ctx, item, variant)
             if not variant:
                 return pd.DataFrame().reindex_like(df)
             df = df[df[COL_VARIANT] == variant]
