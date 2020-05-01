@@ -38,7 +38,6 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - 'remove earsaver' cannot be parsed at start-up - it's ignored
 # FIXME - I think I am going to have to add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
 # FIXME - add user-friendly user names to sync point csv so a person can actually make sense of it in a spreadsheet app.
@@ -200,15 +199,9 @@ def _get_inventory_channel():
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
 
 async def _process_one_trans_record(member, last_action, text, item, variant, command):
-
-    if variant in ITEMS_WITH_NO_VARIANTS:
-        command += ' ' + item
-        item = variant
-        variant = " "
-
     key = (member.id, item, variant)
     if key in last_action:
-        print("{:60} {}".format(text, 'superseded by count and remove'))
+        print("{:60} {}".format(text, 'superseded by count or remove'))
         return
     else:
         if (item, variant) == ('remove', 'all'):
@@ -303,6 +296,12 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
             # Messages with mentions are records created in response to a user action
             member = msg.mentions[0]
             head, item, variant = text.rsplit(maxsplit=2)
+
+            if variant in ITEMS_WITH_NO_VARIANTS:
+                head += ' ' + item
+                item = variant
+                variant = " "
+
             _garbage, command_head = head.split(':')
             command_head = command_head.strip()
             if command_head.startswith('collect'):
