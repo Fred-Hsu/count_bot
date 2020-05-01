@@ -38,7 +38,9 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - add 'update time' column so that we know which entries are stale. Increment version.
+# FIXME - 'report' appears to sort user tables by internal row id
+# FIXME - 'remove earsaver' cannot be parsed at start-up - it's ignored
+# FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
 # FIXME - prevent two bots from running against the same channel
 # FIXME - move INVENTORY_CHANNEL and related config params to my_token. They can all come from env vars, or from the locally-cached config file
