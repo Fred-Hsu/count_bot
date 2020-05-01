@@ -40,8 +40,6 @@ DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic b
 
 # FIXME - prevent two bots from running against the same channel
 # FIXME - move INVENTORY_CHANNEL and related config params to my_token. They can all come from env vars, or from the locally-cached config file
-# FIXME - add collectors: Katy
-# FIXME - help page should point to github readme.md
 # FIXME - add todo list to readme.md
 # FIXME - try to justify 'user' column in 'report'. If can't justify only this, then pad strings to a long length up to 'Brandy Belenky (supply chain)'
 # FIXME - add 'sudo {collector} collect from {maker} ... need to resolve {maker} reference explicitly in code
@@ -114,7 +112,8 @@ def _fake_command_prefix_in_right_channel(_bot, message):
 
 description = '''Keep count of current numbers of face shields in each person's possession until the next drop. ''' \
     '''You can talk to this bot in a direct message (DM) channel, or the assigned '{0}' channel. ''' \
-    '''Help commands that generate too much output get redirected to your DM channel.''' \
+    '''Help commands that generate too much output get redirected to your DM channel. ''' \
+    '''See 10-min guide at https://github.com/Fred-Hsu/count_bot.''' \
     .format(INVENTORY_CHANNEL)
 
 bot = commands.Bot(
