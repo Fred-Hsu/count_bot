@@ -41,6 +41,7 @@ DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic b
 # FIXME - 'report' appears to sort user tables by internal row id
 # FIXME - 'remove earsaver' cannot be parsed at start-up - it's ignored
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
+# FIXME - add user-friendly user names to sync point csv so a person can actually make sense of it in a spreadsheet app.
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
 # FIXME - prevent two bots from running against the same channel
 # FIXME - move INVENTORY_CHANNEL and related config params to my_token. They can all come from env vars, or from the locally-cached config file
