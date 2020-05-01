@@ -38,16 +38,14 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
+# FIXME - add 'update time' column so that we know which entries are stale. Increment version.
+# FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
 # FIXME - prevent two bots from running against the same channel
 # FIXME - move INVENTORY_CHANNEL and related config params to my_token. They can all come from env vars, or from the locally-cached config file
-# FIXME - add todo list to readme.md
-# FIXME - try to justify 'user' column in 'report'. If can't justify only this, then pad strings to a long length up to 'Brandy Belenky (supply chain)'
 # FIXME - add 'sudo {collector} collect from {maker} ... need to resolve {maker} reference explicitly in code
-# FIXME - add 'update time' column so that we know which entries are stale. Increment version.
 # FIXME - add 'delivered' command and a hospital bucket
 # FIXME - maybe addd assembly as an item type
 # FIXME - look into google sheet API to update it automatically. https://developers.google.com/sheets/api/guides/concepts
-# FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
 
 USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP = {
     'admins': ADMIN_ROLE_NAME,
@@ -74,6 +72,8 @@ COL_USER_ID = 'user_id'
 COL_ITEM = 'item'
 COL_VARIANT = 'variant'
 COL_COUNT = 'count'
+
+USER_NAME_LEFT_JUST_WIDTH = 50
 
 maker_inventory_df = pd.DataFrame()  # Stores what makers have made, but not yet passed onto collectors
 collector_inventory_df = pd.DataFrame()  # Stores what collectors have collected from makers
@@ -717,7 +717,7 @@ async def _map_user_ids_to_display_names(ids):
     for the_id in ids:
         member = guild.get_member(the_id)
         if member:
-            mapped[the_id] = member.display_name
+            mapped[the_id] = member.display_name.ljust(USER_NAME_LEFT_JUST_WIDTH)
     return mapped
 
 async def _map_user_id_column_to_display_names(df):
