@@ -213,6 +213,12 @@ add 3 earsaver
 reset earsaver
 remove earsaver
 
+. More sudos to create a report with many users
+sudo maggotbrain add 3 viso prusa
+sudo jds2001 add 3 viso prusa
+sudo justin add 3 viso prusa
+sudo Freddie add 3 viso prusa
+
 
 
 

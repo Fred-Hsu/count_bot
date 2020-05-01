@@ -38,8 +38,8 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - 'report' appears to sort user tables by internal row id
 # FIXME - 'remove earsaver' cannot be parsed at start-up - it's ignored
+# FIXME - I think I am going to have to add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
 # FIXME - add user-friendly user names to sync point csv so a person can actually make sense of it in a spreadsheet app.
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
@@ -76,6 +76,7 @@ ITEMS_WITH_NO_VARIANTS = {
 }
 
 COL_USER_ID = 'user_id'
+COL_USER_NAME = 'user'
 COL_ITEM = 'item'
 COL_VARIANT = 'variant'
 COL_COUNT = 'count'
@@ -783,7 +784,7 @@ from the inventory channel or DM channel.
 
     async def regrouped(df):
         mapped = await _map_user_id_column_to_display_names(df)
-        renamed = mapped.rename(columns={COL_USER_ID: "user"})
+        renamed = mapped.rename(columns={COL_USER_ID: COL_USER_NAME})
         repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
         groups = repivoted.groupby([COL_ITEM, COL_VARIANT], sort=True)
         return groups
@@ -813,7 +814,8 @@ from the inventory channel or DM channel.
         processed = []
         for index, table in groups:
             # Note that 'sparsify' works on all index columns, except for the very last index column.
-            ordered = table.sort_index('columns')
+            ordered = table.sort_values(COL_USER_NAME)
+            ordered = ordered[[COL_COUNT, COL_USER_NAME]]
             total = ordered[COL_COUNT].sum()
             total_line = "{0} {1} = {2} TOTAL".format(index[0], index[1], total)
             processed.append("```{0}\n{1}```".format(total_line, ordered.to_string(index=False, header=False)))
