@@ -38,14 +38,14 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
 
+# FIXME - add user-friendly user names to sync point csv so a person can actually make sense of it in a spreadsheet app.
 # FIXME - I think I am going to have to add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
-# FIXME - add user-friendly user names to sync point csv so a person can actually make sense of it in a spreadsheet app.
+# FIXME - add 'delivered' command and a hospital bucket
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
 # FIXME - prevent two bots from running against the same channel
 # FIXME - move INVENTORY_CHANNEL and related config params to my_token. They can all come from env vars, or from the locally-cached config file
 # FIXME - add 'sudo {collector} collect from {maker} ... need to resolve {maker} reference explicitly in code
-# FIXME - add 'delivered' command and a hospital bucket
 # FIXME - maybe addd assembly as an item type
 # FIXME - look into google sheet API to update it automatically. https://developers.google.com/sheets/api/guides/concepts
 
