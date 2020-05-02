@@ -44,6 +44,10 @@ DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
 # FIXME - add a 'drop-off' command to move items to a dropped box. Collectors add an emoji to confirm. Tnx rebuild looks for reactions in msgs.
+#         create dictionary of DFs for all roles. Change all code to interate over all roles instead of hardcoded and duplicated code for makerr/collectors
+#         (alternatively, in memory keep everyting in one DF, with an additional column=role), but save as separate tables)
+#         then add a third role 'dropped', between maker and collector. Implement 'drop' command. Allow collectors to apply msg response.
+#         'count' shows maker's dropped entries if non-empty. 'Report shows 'dropped' in summmary, and as part of 'makers' tables.
 # FIXME - add 'delivered' command and a hospital bucket
 # FIXME - track historical contributions per person in a separate historical table. Mark an entry for collections and deliveries
 # FIXME - prevent two bots from running against the same channel
@@ -94,7 +98,7 @@ TIME_DIFF = datetime.utcnow() - datetime.now()
 
 DF_COLUMNS = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT, COL_UPDATE_TIME]
 
-USER_NAME_LEFT_JUST_WIDTH = 50
+USER_NAME_LEFT_JUST_WIDTH = 35
 
 maker_inventory_df = pd.DataFrame()  # Stores what makers have made, but not yet passed onto collectors
 collector_inventory_df = pd.DataFrame()  # Stores what collectors have collected from makers

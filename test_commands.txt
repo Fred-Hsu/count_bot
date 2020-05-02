@@ -225,6 +225,7 @@ sudo maggotbrain add 3 viso prusa
 sudo jds2001 add 3 viso prusa
 sudo justin add 3 viso prusa
 sudo Freddie add 3 viso prusa
+sudo justin add 3 ear
 
 . sudo error - specified collector is not a collector
 sudo jds2001 collect from justin 3 visor prusa
@@ -232,6 +233,7 @@ sudo jds2001 collect from justin 3 visor prusa
 . sudo collect 'from'
   sudo <collector> collect from <maker> [count] [item] [variant]
 sudo Freddie collect from justin 3 visor prusa
+sudo Freddie collect from justin 1 ear
 
 
 
