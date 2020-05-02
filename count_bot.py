@@ -8,6 +8,7 @@ and it will rebuild its memory inventory by reading from Discord.
 
 NOTE: Discord.py isn't available as a Conda package it seems. So it is not specified in meta.yaml. Install directly:
    python -m pip install -U discord.py
+   pip install humanize
 """
 import discord
 import logging
@@ -22,6 +23,11 @@ from pprint import pprint
 from functools import lru_cache
 from discord.ext import commands
 from my_tokens import get_bot_token
+from datetime import datetime
+from typing import NamedTuple, Optional
+from humanize import naturaltime
+from dateutil.tz import tzutc
+from dateutil.parser import parse
 
 logging.basicConfig(level=logging.INFO)
 
@@ -30,7 +36,7 @@ INVENTORY_CHANNEL = os.getenv("COUNT_BOT_INVENTORY_CHANNEL", 'bot-inventory')  #
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
-CODE_VERSION = '0.2'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
+CODE_VERSION = '0.3'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
 
 # DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
 # TODO - Probably should turn into real config parameter stored in _discord_config_no_commit.txt
@@ -39,7 +45,6 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
 # FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'delivered' command and a hospital bucket
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
@@ -79,9 +84,15 @@ COL_USER_NAME = 'user'
 COL_ITEM = 'item'
 COL_VARIANT = 'variant'
 COL_COUNT = 'count'
-COL_UPDATE_TIME = 'update_time'
 
-DF_COLUMNS = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
+# DiscordPy returns 'naive' datetime in UTC, not 'aware' datetime.
+# For comformity I just use naive UTC datetime as well. These are stored into CSV files also in naive UTC datetime.
+COL_UPDATE_TIME = 'update_time'
+COL_HUMAN_INTERVAL = 'updated'
+
+TIME_DIFF = datetime.utcnow() - datetime.now()
+
+DF_COLUMNS = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT, COL_UPDATE_TIME]
 
 USER_NAME_LEFT_JUST_WIDTH = 50
 
@@ -141,6 +152,9 @@ class NotEntitledError(commands.errors.CommandError):
 
 class NegativeCount(commands.errors.CommandError):
     pass
+
+def my_naturaltime(dt):
+    return naturaltime(dt - TIME_DIFF)
 
 @bot.listen()
 async def on_command_error(ctx, error):
@@ -203,7 +217,11 @@ def _get_inventory_channel():
             return ch
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
 
-async def _process_one_trans_record(member, last_action, text, item, variant, command):
+class TransLogAction(NamedTuple):
+    count: Optional[int]
+    update_time: datetime
+
+async def _process_one_trans_record(member, last_action, text, item, variant, command, update_time):
     key = (member.id, item, variant)
     if key in last_action:
         print("{:60} {}".format(text, 'superseded by count or remove'))
@@ -213,30 +231,30 @@ async def _process_one_trans_record(member, last_action, text, item, variant, co
             for combo in ALL_ITEM_VARIANT_COMBOS:
                 combo_key = (member.id, combo[0], combo[1])
                 if combo_key not in last_action:
-                    last_action[combo_key] = None
+                    last_action[combo_key] = TransLogAction(None, update_time)
             print("{:60} {}".format(text, 'remove all'))
             return
         elif command.startswith('remove'):
-            last_action[key] = None
+            last_action[key] = TransLogAction(None, update_time)
             print("{:60} {}".format(text, command))
         elif command.startswith('count'):
             parts = command.split()
-            last_action[key] = int(parts[1])
+            last_action[key] = TransLogAction(int(parts[1]), update_time)
             print("{:60} {}".format(text, command))
         else:
             print("{:60} {}".format(text, 'I DO NOT UNDERSTAND THIS COMMAND'))
 
 def _rebuild_dataframe_from_log(last_action, df_read):
     rows = []
-    for (user_id, item, variant), num in last_action.items():
-        if num is not None:
-            rows.append((user_id, item, variant, num))
+    for (user_id, item, variant), action in last_action.items():
+        if action.count is not None:
+            rows.append((user_id, item, variant, action.count, action.update_time))
 
     for index, row in df_read.iterrows():
         key = (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT])
         if key not in last_action:
-            rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT]))
-    pprint(rows)
+            rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT], row[COL_UPDATE_TIME]))
+    pprint(rows, width=120)
 
     df = pd.DataFrame(rows, columns=DF_COLUMNS)
     df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
@@ -291,8 +309,15 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
             sync_point_maker_df = pd.read_csv(io.StringIO(maker_text))
             sync_point_collector_df = pd.read_csv(io.StringIO(collector_text))
 
-            sync_point_maker_df.drop(columns=COL_USER_NAME, inplace=True)
-            sync_point_collector_df.drop(columns=COL_USER_NAME, inplace=True)
+            # FIXME - delete this transition code after code version 0.3 has created a new syncpoint
+            if COL_USER_NAME in sync_point_maker_df:
+                sync_point_maker_df.drop(columns=COL_USER_NAME, inplace=True)
+                sync_point_collector_df.drop(columns=COL_USER_NAME, inplace=True)
+
+            # FIXME - delete this transition code after code version 0.3 has created a new syncpoint
+            if COL_UPDATE_TIME not in sync_point_maker_df:
+                sync_point_maker_df[COL_UPDATE_TIME] = datetime.utcnow()
+                sync_point_collector_df[COL_UPDATE_TIME] = datetime.utcnow()
 
             print("{:60} sync point - stop trolling".format(text))
             break
@@ -315,7 +340,7 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
             else:
                 last_action = last_action_by_role['makers']
                 command = command_head
-            await _process_one_trans_record(member, last_action, text, item, variant, command)
+            await _process_one_trans_record(member, last_action, text, item, variant, command, msg.created_at)
 
     print('  --- updates since last syncpoint --')
     pprint(last_action_by_role)
@@ -349,11 +374,16 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
     }
     return updates_since_sync_point
 
+def _add_human_interval_col(df):
+    new_col = df.apply(lambda row: my_naturaltime(row[COL_UPDATE_TIME]), axis=1)
+    return df.assign(**{COL_HUMAN_INTERVAL: new_col.values})
+
 async def _send_df_as_msg_to_user(ctx, df, prefix=''):
     if not len(df):
         await ctx.send(prefix + "```(no inventory records)```")
     else:
-        result = df.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT]]
+        result = _add_human_interval_col(df)
+        result = result.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT, COL_HUMAN_INTERVAL]]
         result = result.sort_index(axis='index')
         await ctx.send(prefix + "```{0}```".format(result.to_string(index=False)))
 
@@ -828,7 +858,10 @@ from the inventory channel or DM channel.
         for index, table in groups:
             # Note that 'sparsify' works on all index columns, except for the very last index column.
             ordered = table.sort_values(COL_USER_NAME)
-            ordered = ordered[[COL_COUNT, COL_USER_NAME]]
+            ordered = ordered[[COL_COUNT, COL_USER_NAME, COL_UPDATE_TIME]]
+            ordered = _add_human_interval_col(ordered)
+            ordered = ordered.drop(columns=COL_UPDATE_TIME)
+
             total = ordered[COL_COUNT].sum()
             total_line = "{0} {1} = {2} TOTAL".format(index[0], index[1], total)
             processed.append("```{0}\n{1}```".format(total_line, ordered.to_string(index=False, header=False)))
@@ -923,8 +956,8 @@ The argument [are] is always ignored. It's just there so you can ask:
     print('Command: who {0} {1} ({2})'.format(are, role, ctx.message.author.display_name))
 
     if role == 'you' or not role:
-        await ctx.send("Count Bot Johnny 5 at your service. ||Run by ({0}) with pid ({1})||".format(
-            getpass.getuser(), os.getpid()))
+        await ctx.send("Count Bot Johnny 5 at your service. ||Run by ({0}) with pid ({1}) V{2}||".format(
+            getpass.getuser(), os.getpid(), CODE_VERSION))
 
     elif role in USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP:
         role = _get_role_by_name(USER_ROLE_HUMAN_TO_DISCORD_LABEL_MAP[role])
