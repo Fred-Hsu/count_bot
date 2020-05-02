@@ -43,7 +43,7 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - 'count' doesn't add time to the DF!
+# FIXME - when reading back trnx log entries - print its msg.created_at value on the left before {:60}
 # FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'delivered' command and a hospital bucket
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
@@ -605,7 +605,7 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
     # Think of the inventory channel as "disk", the permanent store.
     # If the bot crashes right here, it can always restore its previous state by trolling through the inventory
     # channel and all DM rooms, to find user commands it has not succesfully processed.
-    df.loc[(user_id, item, variant)] = [user_id, item, variant, total]
+    df.loc[(user_id, item, variant)] = [user_id, item, variant, total, datetime.utcnow()]
     msg_prefix = "previous count: {0}  delta: {1}".format(current_count, total-current_count)
     await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)], prefix=msg_prefix)
 
