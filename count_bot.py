@@ -43,7 +43,7 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead. Collectors add an emoji to confirm.
+# FIXME - add a 'drop-off' command to move items to a dropped box. Collectors add an emoji to confirm. Tnx rebuild looks for reactions in msgs.
 # FIXME - add 'delivered' command and a hospital bucket
 # FIXME - track historical contributions per person in a separate historical table. Mark an entry for collections and deliveries
 # FIXME - prevent two bots from running against the same channel
@@ -209,6 +209,27 @@ async def on_ready():
         print('---- writing inventory sync point to log')
         await _post_sync_point_to_trans_log()
     print('---- ready')
+
+# on_reaction_add - this only works if the bot was monitoring messages that reactions operated on.
+# If the reaction tags a message that was posted before this bot was rebooted, then the past
+# message will not be in the "internal message cache", and thus on_reaction_add won't be triggered.
+# Increasing Bot.max_messages doesn't help.
+# @bot.event
+# async def on_reaction_add(reaction, user):
+#     print("Reaction: {0} {1}".format(user, reaction))
+
+@bot.event
+async def on_raw_reaction_add(payload):
+    print("Reaction add: {0}".format(payload))
+
+@bot.event
+async def on_raw_reaction_remove(payload):
+    print("Reaction remove: {0}".format(payload))
+
+# Never got this triggered. Not sure how this action happens.
+# @bot.event
+# async def on_raw_reaction_clear(payload):
+#     print("Reaction clear: {0}".format(payload))
 
 @lru_cache()
 def _get_inventory_channel():
