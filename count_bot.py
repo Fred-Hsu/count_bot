@@ -39,9 +39,8 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - 'count' show show delta
 # FIXME - this fails: collect from Freddie 1 earsaver
-# FIXME - I think I am going to have to add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
+# FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
 # FIXME - add 'delivered' command and a hospital bucket
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
@@ -349,13 +348,13 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
     }
     return updates_since_sync_point
 
-async def _send_df_as_msg_to_user(ctx, df):
+async def _send_df_as_msg_to_user(ctx, df, prefix=''):
     if not len(df):
-        await ctx.send("```(no inventory records)```")
+        await ctx.send(prefix + "```(no inventory records)```")
     else:
         result = df.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT]]
         result = result.sort_index(axis='index')
-        await ctx.send("```{0}```".format(result.to_string(index=False)))
+        await ctx.send(prefix + "```{0}```".format(result.to_string(index=False)))
 
 async def _resolve_item_name(ctx, item):
     item_name = ALIAS_MAPS.get(item.lower())
@@ -546,13 +545,14 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
         return
 
     current_count = 0
+    cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item) & (df[COL_VARIANT] == variant)
+    rows = df[cond]
+    if len(rows) == 1:
+        row = rows.iloc[0]
+        current_count = row[COL_COUNT]
+
     if delta:
         # this is not an update of current count, but a delta addition to current count.
-        cond = (df[COL_USER_ID] == user_id) & (df[COL_ITEM] == item) & (df[COL_VARIANT] == variant)
-        rows = df[cond]
-        if len(rows) == 1:
-            row = rows.iloc[0]
-            current_count = row[COL_COUNT]
             total += current_count
 
     if total < 0:
@@ -571,7 +571,8 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
     # If the bot crashes right here, it can always restore its previous state by trolling through the inventory
     # channel and all DM rooms, to find user commands it has not succesfully processed.
     df.loc[(user_id, item, variant)] = [user_id, item, variant, total]
-    await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)])
+    msg_prefix = "previous count: {0}  delta: {1}".format(current_count, total-current_count)
+    await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)], prefix=msg_prefix)
 
 @bot.command(
     brief="Same as 'count 0'")
