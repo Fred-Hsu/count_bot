@@ -30,7 +30,7 @@ INVENTORY_CHANNEL = os.getenv("COUNT_BOT_INVENTORY_CHANNEL", 'bot-inventory')  #
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
-CODE_VERSION = '0.1'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
+CODE_VERSION = '0.2'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
 
 # DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
 # TODO - Probably should turn into real config parameter stored in _discord_config_no_commit.txt
@@ -39,8 +39,8 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
+# FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'delivered' command and a hospital bucket
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
 # FIXME - prevent two bots from running against the same channel
@@ -79,6 +79,9 @@ COL_USER_NAME = 'user'
 COL_ITEM = 'item'
 COL_VARIANT = 'variant'
 COL_COUNT = 'count'
+COL_UPDATE_TIME = 'update_time'
+
+DF_COLUMNS = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
 
 USER_NAME_LEFT_JUST_WIDTH = 50
 
@@ -235,8 +238,7 @@ def _rebuild_dataframe_from_log(last_action, df_read):
             rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT]))
     pprint(rows)
 
-    column_names = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]
-    df = pd.DataFrame(rows, columns=column_names)
+    df = pd.DataFrame(rows, columns=DF_COLUMNS)
     df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
     return df
 
@@ -320,10 +322,10 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
     updates_since_sync_point = len(last_action_by_role['collectors']) > 1 or len(last_action_by_role['makers']) > 1
 
     if sync_point_maker_df is None:
-        sync_point_maker_df = pd.DataFrame(columns=[COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT])
+        sync_point_maker_df = pd.DataFrame(columns=DF_COLUMNS)
 
     if sync_point_collector_df is None:
-        sync_point_collector_df = pd.DataFrame(columns=[COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT])
+        sync_point_collector_df = pd.DataFrame(columns=DF_COLUMNS)
 
     print('  --- rebuilt inventory --')
     print('Maker sync point:')
@@ -728,14 +730,15 @@ async def _map_dm_user_to_member(user):
 
     raise RuntimeError('Unexpected type for "{0}"'.format(user))
 
-async def _map_user_ids_to_display_names(ids):
+async def _map_user_ids_to_display_names(ids, pad_for_print=True):
     # If a user id isn't found to be associated to this guild, it will not be included in the returned map.
     guild = _get_first_guild()
     mapped = {}
     for the_id in ids:
         member = guild.get_member(the_id)
         if member:
-            mapped[the_id] = member.display_name.ljust(USER_NAME_LEFT_JUST_WIDTH)
+            mapped[the_id] = member.display_name.ljust(USER_NAME_LEFT_JUST_WIDTH) \
+                if pad_for_print else member.display_name
     return mapped
 
 async def _map_user_id_column_to_display_names(df):
@@ -745,7 +748,7 @@ async def _map_user_id_column_to_display_names(df):
 
 async def _add_user_display_name_column(df):
     ids = df.user_id.unique()
-    mapped = await _map_user_ids_to_display_names(ids)
+    mapped = await _map_user_ids_to_display_names(ids, pad_for_print=False)
     new_col = df.apply(lambda row: mapped[row[COL_USER_ID]], axis=1)
     return df.assign(**{COL_USER_NAME: new_col.values})
 
