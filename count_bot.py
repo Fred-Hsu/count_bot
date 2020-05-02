@@ -193,9 +193,11 @@ async def _post_sync_point_to_trans_log():
         guild = _get_first_guild()
         member = guild.get_member(700184823628562482)
         await member.send('DEBUG: record in DM: ' + sync_text, file=file)
+        print('Posted a CSV sync point message on DM')
     else:
         ch = _get_inventory_channel()
         await ch.send(sync_text, file=file)
+        print('Posted a CSV sync point message on inventory channel')
 
 @bot.event
 async def on_ready():
@@ -281,7 +283,7 @@ def _rebuild_dataframe_from_log(last_action, df_read):
     df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
     return df
 
-async def _retrieve_inventory_df_from_transaction_log() -> bool:
+async def _retrieve_inventory_df_from_transaction_log() -> int:
     """
     Troll through inventory channel's message records to find all relevant transactions until we hit a sync point.
     Use these to rebuild in memory the inventory dataframe.
@@ -370,7 +372,8 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
 
     print('  --- updates since last syncpoint --')
     pprint(last_action_by_role)
-    updates_since_sync_point = len(last_action_by_role['collectors']) > 1 or len(last_action_by_role['makers']) > 1
+    updates_since_sync_point = len(last_action_by_role['collectors']) + len(last_action_by_role['makers'])
+    print('updates since last sync point: ', updates_since_sync_point)
 
     if sync_point_maker_df is None:
         sync_point_maker_df = pd.DataFrame(columns=DF_COLUMNS)
