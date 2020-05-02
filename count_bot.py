@@ -50,7 +50,6 @@ DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic 
 # FIXME - when reading back trnx log entries - print its msg.created_at value on the left before {:60}
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
 # FIXME - move INVENTORY_CHANNEL and related config params to my_token. They can all come from env vars, or from the locally-cached config file
-# FIXME - add 'sudo {collector} collect from {maker} ... need to resolve {maker} reference explicitly in code
 # FIXME - maybe addd assembly as an item type
 # FIXME - look into google sheet API to update it automatically. https://developers.google.com/sheets/api/guides/concepts
 # FIXME - 'remove all' generates: PerformanceWarning: dropping on a non-lexsorted multi-index without a level parameter may impact performance.
@@ -926,14 +925,15 @@ async def sudo(ctx, member: discord.Member, command: str, *args):
 Only admins can execute sudo. 'member' may be @alias (in the inventory room) or 'alias' alone (in DM channels). \
 Incorrect spelling of 'alias' will cause the command to fail. Note that 'alias' is case-sensitive.
 
-sudo <member> add [total] [item] [variant]
-sudo <member> count [total] [item] [variant]
-sudo <member> remove [item] [variant]
-sudo <member> reset [item] [variant]
-sudo <member> collect add [total] [item] [variant]
-sudo <member> collect count [total] [item] [variant]
-sudo <member> collect remove [item] [variant]
-sudo <member> collect reset [item] [variant]
+sudo <maker> add [total] [item] [variant]
+sudo <maker> count [total] [item] [variant]
+sudo <maker> remove [item] [variant]
+sudo <maker> reset [item] [variant]
+sudo <collector> collect add [total] [item] [variant]
+sudo <collector> collect count [total] [item] [variant]
+sudo <collector> collect remove [item] [variant]
+sudo <collector> collect reset [item] [variant]
+sudo <collector> collect from <maker> [count] [item] [variant]
 """
     sudo_author = ctx.message.author
     print('Command: sudo {0} {1} {2} ({3})'.format(member, command, args, sudo_author.display_name))
@@ -952,8 +952,13 @@ sudo <member> collect reset [item] [variant]
         command = command + ' ' + args[0]
         args = args[1:]
 
+        is_collector = await _user_has_role(member, COLLECTOR_ROLE_NAME)
+        if not is_collector:
+            await ctx.send("❌  '{0}' needs to have the collector role, for this sudo collect command to work.".format(member))
+            raise NotEntitledError()
+
     if command not in ('count', 'remove', 'add', 'reset',
-                       'collect count', 'collect remove', 'collect add', 'collect reset'):
+                       'collect count', 'collect remove', 'collect add', 'collect reset', 'collect from'):
         await ctx.send("❌  command '{0}' not supported by sudo".format(command))
         return
 
@@ -1138,6 +1143,17 @@ collect from @Freddie 50 earsaver: some items such as ear-savers have no variant
     collector_author = ctx.message.author
     print('Command: collect from {0} {1} {2} {3} ({4})'.format(
         maker, num, item, variant, collector_author.display_name))
+
+    if isinstance(maker, str):
+        # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
+        converter= commands.MemberConverter()
+        maker_input = maker
+        maker = await converter.convert(ctx, maker_input)
+        print("converted '{0}' to '{1}'".format(maker_input, maker))
+
+    if isinstance(num, str):
+        # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
+        num = int(num)
 
     # Make a trial run to bail out early if args are incorrect, so that we can guarantee the success of the
     # actual transfer which consists of two separate commands, in a pseudo-atomic fashion.

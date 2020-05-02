@@ -178,6 +178,10 @@ sudo justin add 3 viso prusa
 sudo justin add 3 prusa petg
 sudo justin reset visor prusa
 
+. Error - sudo collect only works when the specified collector actually has the role
+sudo jds2001 collect count 3 viso prusa
+
+. sudo collect
 sudo justin collect count 3 viso prusa
 sudo justin collect add 3 prusa petg
 sudo justin collect reset visor prusa
@@ -221,6 +225,13 @@ sudo maggotbrain add 3 viso prusa
 sudo jds2001 add 3 viso prusa
 sudo justin add 3 viso prusa
 sudo Freddie add 3 viso prusa
+
+. sudo error - specified collector is not a collector
+sudo jds2001 collect from justin 3 visor prusa
+
+. sudo collect 'from'
+  sudo <collector> collect from <maker> [count] [item] [variant]
+sudo Freddie collect from justin 3 visor prusa
 
 
 
