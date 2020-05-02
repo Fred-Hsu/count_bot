@@ -34,11 +34,13 @@ CODE_VERSION = '0.1'  # Increment this whenever the schema of persisted inventor
 
 # DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
 # TODO - Probably should turn into real config parameter stored in _discord_config_no_commit.txt
-DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = False  # Disable the inventory sync point recorded at bot start-up
-DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = False  # Disable any official inventory posting when testing in DM channel
-DEBUG_PRETEND_DM_IS_INVENTORY = False  # Make interactions in DM channel mimic behavior seen in official inventory
+DEBUG_ = False
+DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync point recorded at bot start-up
+DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
+DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - add user-friendly user names to sync point csv so a person can actually make sense of it in a spreadsheet app.
+# FIXME - 'count' show show delta
+# FIXME - this fails: collect from Freddie 1 earsaver
 # FIXME - I think I am going to have to add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
 # FIXME - add 'delivered' command and a hospital bucket
@@ -160,9 +162,11 @@ async def on_command_error(ctx, error):
 
 async def _post_sync_point_to_trans_log():
     s_buf = io.StringIO()
-    maker_inventory_df.to_csv(s_buf, index=False)
+    maker_df = await _add_user_display_name_column(maker_inventory_df)
+    maker_df.to_csv(s_buf, index=False)
     s_buf.write('\n')
-    collector_inventory_df.to_csv(s_buf, index=False)
+    collector_df = await _add_user_display_name_column(collector_inventory_df)
+    collector_df.to_csv(s_buf, index=False)
     s_buf.write('\n')
     s_buf.write("version\n'{0}'\n".format(CODE_VERSION))
     s_buf.seek(0)
@@ -283,12 +287,13 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
             csv_text = str(csv_text, 'utf-8')
 
             maker_text, collector_text, version = csv_text.split('\n\n', maxsplit=2)
-            # print(version)
-            # print(maker_text)
-            # print(collector_text)
 
             sync_point_maker_df = pd.read_csv(io.StringIO(maker_text))
             sync_point_collector_df = pd.read_csv(io.StringIO(collector_text))
+
+            sync_point_maker_df.drop(columns=COL_USER_NAME, inplace=True)
+            sync_point_collector_df.drop(columns=COL_USER_NAME, inplace=True)
+
             print("{:60} sync point - stop trolling".format(text))
             break
 
@@ -635,7 +640,7 @@ async def _remove(ctx, item: str = None, variant: str = None, role='makers'):
         await _post_user_record_to_trans_log(ctx, 'remove' if role == 'makers' else 'collect remove', 'all')
 
         # Only update memory DF after we have persisted the message to the inventory channel.
-        df.drop((user_id), inplace=True)
+        df.drop(user_id, inplace=True)
         await ctx.send('All your records have been removed')
         return
 
@@ -737,6 +742,12 @@ async def _map_user_id_column_to_display_names(df):
     ids = df.user_id.unique()
     mapped = await _map_user_ids_to_display_names(ids)
     return df.replace(mapped)
+
+async def _add_user_display_name_column(df):
+    ids = df.user_id.unique()
+    mapped = await _map_user_ids_to_display_names(ids)
+    new_col = df.apply(lambda row: mapped[row[COL_USER_ID]], axis=1)
+    return df.assign(**{COL_USER_NAME: new_col.values})
 
 @bot.command(
     brief="Report total inventory in the system",
