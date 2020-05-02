@@ -43,10 +43,10 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - track historical contributions per person in a separate historical table. Mark an entry for collections and deliveries
+# FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead. Collectors add an emoji to confirm.
 # FIXME - add 'delivered' command and a hospital bucket
+# FIXME - track historical contributions per person in a separate historical table. Mark an entry for collections and deliveries
 # FIXME - prevent two bots from running against the same channel
-# FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - when reading back trnx log entries - print its msg.created_at value on the left before {:60}
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
 # FIXME - move INVENTORY_CHANNEL and related config params to my_token. They can all come from env vars, or from the locally-cached config file
