@@ -39,7 +39,6 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - this fails: collect from Freddie 1 earsaver
 # FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'update time' column so that we know which entries are stale. Increment version. Sort by this in 'report'
 # FIXME - add 'delivered' command and a hospital bucket
@@ -970,7 +969,7 @@ You can also type 'help collect from' to see help page for a specific subcommand
 If you run collect without a subcommand, it shows you your currection collection inventory.
 """
     collect_author = ctx.message.author
-    print('Command: collect ... ({0})'.format(collect_author.display_name))
+    print('Command: collect (group check) ({0})'.format(collect_author.display_name))
 
     is_collector = await _user_has_role(collect_author, COLLECTOR_ROLE_NAME)
     if not is_collector:
@@ -1051,7 +1050,7 @@ collect add 20 prusa - add 20 to the collection of a single variant of prusa.
     name='from',
     brief="A collector moves n items from a maker to her collection",
     description="A collector moves n items from a maker to her collection:")
-async def collect_from(ctx, maker: discord.Member, num: int, item: str, variant: str):
+async def collect_from(ctx, maker: discord.Member, num: int, item: str, variant: str=None):
     """
 This is like a banking transfer. A collector transfers n items from a a maker's inventory to the collector's. \
 The {maker} can be the collector herself. Everyone can play both roles: makers and collectors at different times \
@@ -1071,6 +1070,7 @@ Type 'help count' to see descriptions of [item] and [variant], and how you can u
 
 collect from @Freddie 20 prusa PETG: collector receives 20 items from a maker.
 collect from @Freddie -20 prusa PETG: collector returns 20 items back to a maker.
+collect from @Freddie 50 earsaver: some items such as ear-savers have no variants
 """
     collector_author = ctx.message.author
     print('Command: collect from {0} {1} {2} {3} ({4})'.format(

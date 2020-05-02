@@ -208,6 +208,9 @@ count 77 ear
 count 22 ear extraneous_variant
 count 22 ear petg
 
+. Collect ear savers
+collect from Freddie 1 earsaver
+
 . remove
 add 3 earsaver
 reset earsaver
