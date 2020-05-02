@@ -26,8 +26,6 @@ from my_tokens import get_bot_token
 from datetime import datetime
 from typing import NamedTuple, Optional
 from humanize import naturaltime
-from dateutil.tz import tzutc
-from dateutil.parser import parse
 
 logging.basicConfig(level=logging.INFO)
 
@@ -45,6 +43,7 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
+# FIXME - 'count' doesn't add time to the DF!
 # FIXME - add a 'drop-off' command that does effectively 'collect', but triggered by a maker instead.
 # FIXME - add 'delivered' command and a hospital bucket
 # FIXME - consider making the bot respond if people type in wrong commands that do not exist. Let them know the bot is still alive.
@@ -306,10 +305,15 @@ async def _retrieve_inventory_df_from_transaction_log() -> bool:
 
             maker_text, collector_text, version = csv_text.split('\n\n', maxsplit=2)
 
+            # FIXME - rewrite this transition code after code version 0.3 has created a new syncpoint
             sync_point_maker_df = pd.read_csv(io.StringIO(maker_text))
             sync_point_collector_df = pd.read_csv(io.StringIO(collector_text))
+            if COL_UPDATE_TIME in sync_point_maker_df:
+                print('- Re-parsing csv files to convert datetime column')
+                sync_point_maker_df = pd.read_csv(io.StringIO(maker_text), parse_dates=[COL_UPDATE_TIME])
+                sync_point_collector_df = pd.read_csv(io.StringIO(collector_text), parse_dates=[COL_UPDATE_TIME])
 
-            # FIXME - delete this transition code after code version 0.3 has created a new syncpoint
+            # FIXME - delete this transition "if" after code version 0.3 has created a new syncpoint
             if COL_USER_NAME in sync_point_maker_df:
                 sync_point_maker_df.drop(columns=COL_USER_NAME, inplace=True)
                 sync_point_collector_df.drop(columns=COL_USER_NAME, inplace=True)
