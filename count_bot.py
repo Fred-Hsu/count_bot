@@ -34,6 +34,7 @@ INVENTORY_CHANNEL = os.getenv("COUNT_BOT_INVENTORY_CHANNEL", 'bot-inventory')  #
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
+MSG_HISTORY_TROLLING_LIMIT = 4000  # How many messages do we read back from transaction log until we hit a sync point?
 CODE_VERSION = '0.3'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
 
 # DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
@@ -145,6 +146,7 @@ bot = commands.Bot(
         no_category='Commands',
         dm_help=True,   # Set to True to redirect help text that are too long to user's own DM channels
     ),
+    # max_messages=10000,  # I found this not to be useful. Doesn't help getting processed reactions.
 )
 
 class NotEntitledError(commands.errors.CommandError):
@@ -247,7 +249,7 @@ class TransLogAction(NamedTuple):
 async def _process_one_trans_record(member, last_action, text, item, variant, command, update_time):
     key = (member.id, item, variant)
     if key in last_action:
-        print("{:60} {}".format(text, 'superseded by count or remove'))
+        print("{} {:60} {}".format(update_time, text, 'superseded by count or remove'))
         return
     else:
         if (item, variant) == ('remove', 'all'):
@@ -255,17 +257,17 @@ async def _process_one_trans_record(member, last_action, text, item, variant, co
                 combo_key = (member.id, combo[0], combo[1])
                 if combo_key not in last_action:
                     last_action[combo_key] = TransLogAction(None, update_time)
-            print("{:60} {}".format(text, 'remove all'))
+            print("{} {:60} {}".format(update_time, text, 'remove all'))
             return
         elif command.startswith('remove'):
             last_action[key] = TransLogAction(None, update_time)
-            print("{:60} {}".format(text, command))
+            print("{} {:60} {}".format(update_time, text, command))
         elif command.startswith('count'):
             parts = command.split()
             last_action[key] = TransLogAction(int(parts[1]), update_time)
-            print("{:60} {}".format(text, command))
+            print("{} {:60} {}".format(update_time, text, command))
         else:
-            print("{:60} {}".format(text, 'I DO NOT UNDERSTAND THIS COMMAND'))
+            print("{} {:60} {}".format(update_time, text, 'I DO NOT UNDERSTAND THIS COMMAND'))
 
 def _rebuild_dataframe_from_log(last_action, df_read):
     rows = []
@@ -302,7 +304,7 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
 
     # Channel history is returned in reverse chronological order.
     # Troll through these entries and process only transaction log-type messages posted by the bot itself.
-    async for msg in ch.history():
+    async for msg in ch.history(limit=MSG_HISTORY_TROLLING_LIMIT):
         text = msg.content
 
         if msg.author != bot.user:
@@ -347,14 +349,13 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
                 sync_point_maker_df[COL_UPDATE_TIME] = datetime.utcnow()
                 sync_point_collector_df[COL_UPDATE_TIME] = datetime.utcnow()
 
-            print("{:60} sync point - stop trolling".format(text))
+            print("{} {:60} sync point - stop trolling".format(msg.created_at, text))
             break
 
         if msg.mentions:
             # Messages with mentions are records created in response to a user action
             member = msg.mentions[0]
             head, item, variant = text.rsplit(maxsplit=2)
-
             if variant in ITEMS_WITH_NO_VARIANTS:
                 head += ' ' + item
                 item = variant
@@ -364,7 +365,8 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
             command_head = command_head.strip()
             if command_head.startswith('collect'):
                 last_action = last_action_by_role['collectors']
-                _garbage, command = command_head.split(maxsplit=1)
+                if (item, variant) != ('remove', 'all'):
+                    _garbage, command = command_head.split(maxsplit=1)
             else:
                 last_action = last_action_by_role['makers']
                 command = command_head
