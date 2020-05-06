@@ -901,22 +901,29 @@ from the inventory channel or DM channel.
     maker_processed = process_groups(maker_groups)
     collector_processed = process_groups(collector_groups)
 
-    detailed_breakdown = ''
+    detailed_breakdowns = []
     for processed_label, processed in (('Makers', maker_processed), ('Collectors', collector_processed)):
-        detailed_breakdown += processed_label
-        for entry in processed:
-            detailed_breakdown += entry
+        breakdown = processed_label
+        breakdown += ''.join(processed)
+
+        # FIXME - check that breakdown is less than 2,000 chars. Trim it and add disclaimer about chopped-off content.
+        detailed_breakdowns.append(breakdown)
 
     if ctx.message.channel.type == discord.ChannelType.private and not DEBUG_PRETEND_DM_IS_INVENTORY:
         msg = "Summary:\n```{0}```".format(total_table.to_string(index=False))
-        msg += detailed_breakdown
         await ctx.send(msg)
+
+        # I have to break up different roles. Each Discord message has a server-side hardl imit of 2,000.
+        for detail_by_role in detailed_breakdowns:
+            await ctx.send(detail_by_role)
     else:
         msg = "Summary shown here. Detailed report sent to your DM channel.\n```{0}```".format(total_table.to_string(index=False))
         await ctx.send(msg)
-        msg = "Detailed breakdown: {0} {1}\n".format(item or '', variant or '')
-        msg += detailed_breakdown
-        await ctx.message.author.send(msg)
+
+        # I have to break up different roles. Each Discord message has a server-side hardl imit of 2,000.
+        for detail_by_role in detailed_breakdowns:
+            msg = "Detailed breakdown: {0} {1}\n".format(item or '', variant or '')
+            await ctx.send(msg + detail_by_role)
 
 async def _user_has_role(user, role_name):
     member = await _map_dm_user_to_member(user)
