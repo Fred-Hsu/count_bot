@@ -923,7 +923,7 @@ from the inventory channel or DM channel.
         # I have to break up different roles. Each Discord message has a server-side hardl imit of 2,000.
         for detail_by_role in detailed_breakdowns:
             msg = "Detailed breakdown: {0} {1}\n".format(item or '', variant or '')
-            await ctx.send(msg + detail_by_role)
+            await ctx.message.author.send(msg + detail_by_role)
 
 async def _user_has_role(user, role_name):
     member = await _map_dm_user_to_member(user)
