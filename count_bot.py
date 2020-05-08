@@ -280,8 +280,12 @@ class TransLogAction(NamedTuple):
     count: Optional[int]
     update_time: datetime
 
-async def _process_one_trans_record(member, last_action, text, item, variant, command, update_time):
-    key = (member.id, item, variant)
+async def _process_one_trans_record(member, last_action, text, item, variant, command, update_time, collector):
+    if not collector:
+        key = (member.id, item, variant)
+    else:
+        key = (member.id, collector.id, item, variant)
+
     if key in last_action:
         print("{} {:60} {}".format(update_time, text, 'superseded by count or remove'))
         return
@@ -291,17 +295,17 @@ async def _process_one_trans_record(member, last_action, text, item, variant, co
                 combo_key = (member.id, combo[0], combo[1])
                 if combo_key not in last_action:
                     last_action[combo_key] = TransLogAction(None, update_time)
-            print("{} {:60} {}".format(update_time, text, 'remove all'))
+            print("{} {:80} {}".format(update_time, text, 'remove all'))
             return
         elif command.startswith('remove'):
             last_action[key] = TransLogAction(None, update_time)
-            print("{} {:60} {}".format(update_time, text, command))
+            print("{} {:80} {}".format(update_time, text, command))
         elif command.startswith('count'):
             parts = command.split()
             last_action[key] = TransLogAction(int(parts[1]), update_time)
-            print("{} {:60} {}".format(update_time, text, command))
+            print("{} {:80} {}".format(update_time, text, command))
         else:
-            print("{} {:60} {}".format(update_time, text, 'I DO NOT UNDERSTAND THIS COMMAND'))
+            print("{} {:80} {}".format(update_time, text, 'I DO NOT UNDERSTAND THIS COMMAND'))
 
 class RoleBootstrap:
     # This tracks the last action performed by a user on an item + variant.
@@ -355,9 +359,22 @@ class TransactionRoleBootstrap(RoleBootstrap):
     df_columns = TRANSACTION_DF_COLUMNS
     primary_key = TRANSACTION_PRIMARY_KEY
 
-    # FIXME - override rebuild_inventory_df_from_sync_n_updates() and add secondary user name column
-    # Only do this after I start to record transaction entries for 'drop @Katy 20 ver pla
-    # I need to record target user in TransLogAction when reading back these trnx log entries.
+    def rebuild_inventory_df_from_sync_n_updates(self):
+        rows = []
+        for (maker_id, collector_id, item, variant), action in self.last_action.items():
+            if action.count is not None:
+                rows.append((maker_id, item, variant, collector_id, action.count, action.update_time))
+
+        for index, row in self.sync_point_df.iterrows():
+            key = (row[COL_USER_ID], row[COL_SECOND_USER_ID], row[COL_ITEM], row[COL_VARIANT])
+            if key not in self.last_action:
+                rows.append(
+                    (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_SECOND_USER_ID], row[COL_COUNT], row[COL_UPDATE_TIME]))
+        pprint(rows, width=120)
+
+        df = pd.DataFrame(rows, columns=self.df_columns)
+        df.set_index(keys=self.primary_key, inplace=True, verify_integrity=True, drop=False)
+        self.inventory_df = df
 
 BOOTSTRAP_CLASS_BY_USER_ROLE = {
     USER_ROLE_MAKERS:       RoleBootstrap,
@@ -416,19 +433,27 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
                 csv_text = tables[i]
                 bootstrap_by_role[role_name].read_sync_point_csv(csv_text)
 
-            print("{} {:60} sync point - stop trolling".format(msg.created_at, text))
+            print("{} {:80} sync point - stop trolling".format(msg.created_at, text))
             break
 
         if msg.mentions:
-            # Messages with mentions are records created in response to a user action
-            member = msg.mentions[0]
+            # Messages with mentions are records created in response to a user action.
+            # The order of the mentions list is not in any particular order so you should not rely on it.
+            # This is a discord limitation, not one with the library.
+            mention_map = dict([(str(m.id), m) for m in msg.mentions])
+
+            collector = None
             head, item, variant = text.rsplit(maxsplit=2)
             if variant in ITEMS_WITH_NO_VARIANTS:
                 head += ' ' + item
                 item = variant
                 variant = " "
 
-            _garbage, command_head = head.split(':')
+            member_prefix, command_head = head.split(':')
+            _garbage, member_str = member_prefix.rsplit(maxsplit=1)
+            member_str = member_str.strip('<@!>')
+            member = mention_map[member_str]
+
             command_head = command_head.strip()
             if command_head.startswith('collect'):
                 last_action = bootstrap_by_role[USER_ROLE_COLLECTORS].last_action
@@ -436,10 +461,16 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
                     _garbage, command = command_head.split(maxsplit=1)
                 else:
                     command = ''
+            elif command_head.startswith('dropbox'):
+                last_action = bootstrap_by_role[USER_ROLE_DROPBOXES].last_action
+                _cmd, _count, collector_str, count = command_head.split(maxsplit=4)
+                collector_str = collector_str.strip('<@!>')
+                collector = mention_map[collector_str]
+                command = 'count-dropbox ' + count
             else:
                 last_action = bootstrap_by_role[USER_ROLE_MAKERS].last_action
                 command = command_head
-            await _process_one_trans_record(member, last_action, text, item, variant, command, msg.created_at)
+            await _process_one_trans_record(member, last_action, text, item, variant, command, msg.created_at, collector)
 
     print('  --- updates since last syncpoint --')
 
