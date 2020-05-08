@@ -432,7 +432,7 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
             command_head = command_head.strip()
             if command_head.startswith('collect'):
                 last_action = bootstrap_by_role[USER_ROLE_COLLECTORS].last_action
-                if command_head != 'collect':
+                if (item, variant) != ('remove', 'all'):
                     _garbage, command = command_head.split(maxsplit=1)
                 else:
                     command = ''
