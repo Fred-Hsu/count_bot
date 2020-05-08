@@ -1308,8 +1308,8 @@ from the drop box into the collector's inventory.
 
 Type 'help count' to see descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
 
-drop for @Katy all - drop all items types in maker's inventory into Katy's drop box
-drop for @Katy all ver - drop all variants of Verkstan made into the drop box
+drop for @Katy all ver - drop all variants of Verkstan made into Katy's drop box
+drop for @Katy all - drop all items of same type in maker's inventory
 drop for @Katy 20 ver pet - drop only 20 out of current Verkstan PETG inventory
 drop for @Katy -10 ver pet - take back 10 Verkstans
 """
@@ -1317,8 +1317,10 @@ drop for @Katy -10 ver pet - take back 10 Verkstans
     print('Command: drop for {0} {1} {2} {3} ({4})'.format(collector, num, item, variant, maker.display_name))
 
     if num == 'all':
-        num, _item, _variant = await _count(ctx, 0, item, variant, delta=True,
-                role=USER_ROLE_MAKERS, trial_run_only=True)
+        result= await _count(ctx, 0, item, variant, delta=True, role=USER_ROLE_MAKERS, trial_run_only=True)
+        if result is None:
+            return
+        num, _item, _variant = result
     else:
         try:
             num = int(num)

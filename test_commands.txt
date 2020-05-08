@@ -261,6 +261,7 @@ count 20 pru pla
 . Error - use 'collect from' to check for errors on behalf of 'drop for'
 drop for justin 0 ver pet
 drop for timothyjryan 1 ver pet
+drop for justin all
 
 . drop for
 drop for justin 1 ver pet
@@ -275,6 +276,9 @@ drop for Freddie -300 pru pla
 . undrop successfully
 drop for Freddie -2 pru pla
 
+. Drop ALL
+drop for justin all pru pla
+drop for justin all ver
 
 
     # FIXME - continue here !!!!
@@ -282,11 +286,18 @@ drop for Freddie -2 pru pla
     #   drop for justin 1 ear
     #   and other variants
     (done)
+
+    drop for @Katy all - drop all items types in maker's inventory into Katy's drop box
+    drop for @Katy all ver - drop all variants of Verkstan made into the drop box
+    (done)
+
     # Then worry about reading them back from trans log later.
     # decompose this into two actual transactions:
     #   @maker: count -1 ear
     #   @maker: drop @collector count 1 ear
 
+@Freddie: dropbox count @X_g_Z 8 verkstan PETG
+@Freddie: dropbox count @X_g_Z 17 prusa PLA
 
 
 
