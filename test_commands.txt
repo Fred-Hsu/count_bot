@@ -198,9 +198,14 @@ count -10 prusa petg
 collect from justin 150 prusa pla
 collect from justin -150 prusa pla
 
+. More Errors - anything in _count that returns red cross bails out 'collect from'
+collect from justin 200 visor petg
+collect from justin 200 visor ver
+collect from justin 0 prusa pla
+
 . 'collect from'
-collect from justin 5 prusa pla
-collect from justin -5 prusa pla
+collect from justin 1 prusa pla
+collect from justin -1 prusa pla
 
 . Ear Saver - it has no variants
 count 55 earsaver
@@ -227,6 +232,10 @@ sudo justin add 3 viso prusa
 sudo Freddie add 3 viso prusa
 sudo justin add 3 ear
 
+. error - sudo collect from
+sudo timothyjryan collect from Freddie 0 prusa pla
+sudo Freddie collect from justin 0 prusa pla
+
 . sudo error - specified collector is not a collector
 sudo jds2001 collect from justin 3 visor prusa
 
@@ -234,6 +243,54 @@ sudo jds2001 collect from justin 3 visor prusa
   sudo <collector> collect from <maker> [count] [item] [variant]
 sudo Freddie collect from justin 3 visor prusa
 sudo Freddie collect from justin 1 ear
+
+. Errors - drop for
+drop for 1
+drop for justin not-a-number
+drop for justin 0 ear
+
+. Error - Drop for
+remove all
+drop for justin 1 ear
+drop for justin 1
+
+. set up inventory to test 'drop for'
+count 10 ver pet
+count 20 pru pla
+
+. Error - use 'collect from' to check for errors on behalf of 'drop for'
+drop for justin 0 ver pet
+drop for timothyjryan 1 ver pet
+
+. drop for
+drop for justin 1 ver pet
+drop for Freddie 2 ver pet
+drop for Freddie 3 pru pla
+drop for Freddie 2 pru pla
+
+. negative drop - Error
+drop for justin -3 pru pla
+drop for Freddie -300 pru pla
+
+. undrop successfully
+drop for Freddie -2 pru pla
+
+
+
+    # FIXME - continue here !!!!
+    # Implement code to make this work:
+    #   drop for justin 1 ear
+    #   and other variants
+    (done)
+    # Then worry about reading them back from trans log later.
+    # decompose this into two actual transactions:
+    #   @maker: count -1 ear
+    #   @maker: drop @collector count 1 ear
+
+
+
+
+
 
 
 

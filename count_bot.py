@@ -36,9 +36,7 @@ ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
 
-# CODE_VERSION = '0.4'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
-# FIXME - to resurrect when moving to V0.4
-CODE_VERSION = '0.3'
+CODE_VERSION = '0.4'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
 
 # DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
 # TODO - Probably should turn into real config parameter stored in _discord_config_no_commit.txt
@@ -47,12 +45,19 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
+# FIXME - Leon and Vinny want the bot to generate CSV on demand - probably send to DM channel for now
 # FIXME - add a 'drop-off' command to move items to a dropped box. Collectors add an emoji to confirm. Tnx rebuild looks for reactions in msgs.
-#         create dictionary of DFs for all roles. Change all code to interate over all roles instead of hardcoded and duplicated code for makerr/collectors
-#         (alternatively, in memory keep everyting in one DF, with an additional column=role), but save as separate tables)
-#         Test backward compatibility of CSV
+#         checked - create dictionary of DFs for all roles. Change all code to interate over all roles instead of hardcoded and duplicated code for maker/collectors
+#         future - (alternatively, in memory keep everyting in one DF, with an additional column=role), but save as separate tables)
+#         checked - Test backward compatibility of CSV
 #         then add a third role 'dropped', between maker and collector. Implement 'drop' command. Allow collectors to apply msg response.
-#         'count' shows maker's dropped entries if non-empty. 'Report shows 'dropped' in summmary, and as part of 'makers' tables.
+#         new table column - need user ids of both collector and maker - this is the PK of the drop box.
+#         'collect' shows maker's dropped entries if non-empty. 'Report shows 'dropped' in summmary, and as part of 'collectors' detail tables.
+#         read new 'drop' transaction log entries with maker and collector names.
+# FIXME - add command to produce sync point csv on demand, but only send to DM channel for manual backup
+# FIXME - add convenient spying tools: count @Freddie, report @Freddie, and collect @Freddie
+# FIXME - add 'collect from <maker>' - same as count @Freddie
+# FIXME - add 'collect from <maker> ALL [pru] [pet] - to get all items without specifying the count nor item
 # FIXME - add 'delivered' command and a hospital bucket
 # FIXME - track historical contributions per person in a separate historical table. Mark an entry for collections and deliveries
 # FIXME - prevent two bots from running against the same channel
@@ -99,11 +104,27 @@ COL_COUNT = 'count'
 COL_UPDATE_TIME = 'update_time'
 COL_HUMAN_INTERVAL = 'updated'
 
+COL_SECOND_USER_ID = 'second_user_id'
+COL_SECOND_USER_NAME = 'second_user'
+
+COL_MAKER_NAME = 'maker'
+COL_COLLECTOR_NAME = 'collector'
+
+USER_ID_COLUMNS = (COL_USER_ID, COL_SECOND_USER_ID)
+
 TIME_DIFF = datetime.utcnow() - datetime.now()
 
-DF_COLUMNS = [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT, COL_UPDATE_TIME]
+# Personal inventories are where a user alone is part of the primary key.
+# This includes maker inventories and collector inventories.
+PERSONAL_PRIMARY_KEY = [COL_USER_ID, COL_ITEM, COL_VARIANT]
+PERSONAL_DF_COLUMNS = PERSONAL_PRIMARY_KEY + [COL_COUNT, COL_UPDATE_TIME]
 
-USER_NAME_LEFT_JUST_WIDTH = 35
+# A transaction inventory is where we record a transaction between two users.
+# So both users need to be part of the primary key.
+TRANSACTION_PRIMARY_KEY = PERSONAL_PRIMARY_KEY + [COL_SECOND_USER_ID]
+TRANSACTION_DF_COLUMNS = TRANSACTION_PRIMARY_KEY + [COL_COUNT, COL_UPDATE_TIME]
+
+USER_NAME_LEFT_JUST_WIDTH = 30
 
 USER_ROLE_MAKERS = 'makers'  # Stores what makers have made, but not yet passed onto collectors
 USER_ROLE_COLLECTORS = 'collectors'  # Stores what collectors have collected from makers
@@ -113,9 +134,7 @@ USER_ROLE_DROPBOXES = 'dropboxes'  # Dropboxes serving as intermediate buffer be
 INVENTORY_BY_USER_ROLE = OrderedDict()
 
 # The order of items in this list is important. It is used to persist CSV tables into CSV sync point
-# USER_ROLES_IN_ORDER = [USER_ROLE_MAKERS, USER_ROLE_COLLECTORS, USER_ROLE_DROPBOXES]
-# FIXME - to resurrect when moving to V0.4, with a new drop-box role
-USER_ROLES_IN_ORDER = [USER_ROLE_MAKERS, USER_ROLE_COLLECTORS]
+USER_ROLES_IN_ORDER = [USER_ROLE_MAKERS, USER_ROLE_COLLECTORS, USER_ROLE_DROPBOXES]
 
 ALIAS_MAPS = {}
 ALL_ITEM_VARIANT_COMBOS = []
@@ -195,8 +214,8 @@ async def _post_sync_point_to_trans_log():
     s_buf = io.StringIO()
 
     for _role, inventory_df in INVENTORY_BY_USER_ROLE.items():
-        maker_df = await _add_user_display_name_column(inventory_df)
-        maker_df.to_csv(s_buf, index=False)
+        modified_df = await _add_user_display_name_column(inventory_df)
+        modified_df.to_csv(s_buf, index=False)
         s_buf.write('\n')
 
     s_buf.write("version\n'{0}'\n".format(CODE_VERSION))
@@ -292,13 +311,29 @@ class RoleBootstrap:
     sync_point_df = pd.DataFrame()
     inventory_df = pd.DataFrame()
 
+    df_columns = PERSONAL_DF_COLUMNS
+    primary_key = PERSONAL_PRIMARY_KEY
+
     def __init__(self, role_name):
         self.role_name = role_name
         self.last_action = {}
-        self.sync_point_df = pd.DataFrame(columns=DF_COLUMNS)
+        self.sync_point_df = pd.DataFrame(columns=self.df_columns)
         self.inventory_df = None
 
-    def rebuild_inventory_df_from_log(self):
+    def read_sync_point_csv(self, csv_text):
+        sync_df = pd.read_csv(io.StringIO(csv_text))
+        if COL_UPDATE_TIME in sync_df:  # From V0.1 to V0.3 - CSV did not have update-time before V0.3
+            sync_df = pd.read_csv(io.StringIO(csv_text), parse_dates=[COL_UPDATE_TIME])
+
+        if COL_USER_NAME in sync_df:  # Code before V0.3 did not have user name column
+            sync_df.drop(columns=COL_USER_NAME, inplace=True)
+
+        if COL_UPDATE_TIME not in sync_df:  # CSV before V0.3 did not have update time column
+            sync_df[COL_UPDATE_TIME] = datetime.utcnow()
+
+        self.sync_point_df = sync_df
+
+    def rebuild_inventory_df_from_sync_n_updates(self):
         rows = []
         for (user_id, item, variant), action in self.last_action.items():
             if action.count is not None:
@@ -311,9 +346,23 @@ class RoleBootstrap:
                     (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_COUNT], row[COL_UPDATE_TIME]))
         pprint(rows, width=120)
 
-        df = pd.DataFrame(rows, columns=DF_COLUMNS)
-        df.set_index(keys=[COL_USER_ID, COL_ITEM, COL_VARIANT], inplace=True, verify_integrity=True, drop=False)
+        df = pd.DataFrame(rows, columns=self.df_columns)
+        df.set_index(keys=self.primary_key, inplace=True, verify_integrity=True, drop=False)
         self.inventory_df = df
+
+class TransactionRoleBootstrap(RoleBootstrap):
+    df_columns = TRANSACTION_DF_COLUMNS
+    primary_key = TRANSACTION_PRIMARY_KEY
+
+    # FIXME - override rebuild_inventory_df_from_sync_n_updates() and add secondary user name column
+    # Only do this after I start to record transaction entries for 'drop @Katy 20 ver pla
+    # I need to record target user in TransLogAction when reading back these trnx log entries.
+
+BOOTSTRAP_CLASS_BY_USER_ROLE = {
+    USER_ROLE_MAKERS:       RoleBootstrap,
+    USER_ROLE_COLLECTORS:   RoleBootstrap,
+    USER_ROLE_DROPBOXES:    TransactionRoleBootstrap,
+}
 
 async def _retrieve_inventory_df_from_transaction_log() -> int:
     """
@@ -325,7 +374,8 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
     bootstrap_by_role = OrderedDict()
     for role_name in USER_ROLES_IN_ORDER:
         # Make sure to add them in the right order so we can do simply do iteration when order is important.
-        bootstrap_by_role[role_name] = RoleBootstrap(role_name)
+        cls = BOOTSTRAP_CLASS_BY_USER_ROLE[role_name]
+        bootstrap_by_role[role_name] = cls(role_name)
 
     # Channel history is returned in reverse chronological order.
     # Troll through these entries and process only transaction log-type messages posted by the bot itself.
@@ -358,20 +408,12 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
             tables, version = tables[:-1], tables[-1]
 
             for i, role_name in enumerate(USER_ROLES_IN_ORDER):
+                if i >= len(tables):
+                    # Before V0.4, there were only makers and collectors tables.
+                    break
+                print("  parsing csv table for: ", role_name)
                 csv_text = tables[i]
-
-                sync_df = pd.read_csv(io.StringIO(csv_text))
-                if COL_UPDATE_TIME in sync_df:  # From V0.1 to V0.3 - CSV did not have update-time before V0.3
-                    print('- Re-parsing csv files to convert datetime column')
-                    sync_df = pd.read_csv(io.StringIO(csv_text), parse_dates=[COL_UPDATE_TIME])
-
-                if COL_USER_NAME in sync_df:  # Code before V0.3 did not have user name column
-                    sync_df.drop(columns=COL_USER_NAME, inplace=True)
-
-                if COL_UPDATE_TIME not in sync_df:  # CSV before V0.3 did not have update time column
-                    sync_df[COL_UPDATE_TIME] = datetime.utcnow()
-
-                bootstrap_by_role[role_name].sync_point_df = sync_df
+                bootstrap_by_role[role_name].read_sync_point_csv(csv_text)
 
             print("{:60} sync point - stop trolling".format(text))
             break
@@ -390,7 +432,10 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
             command_head = command_head.strip()
             if command_head.startswith('collect'):
                 last_action = bootstrap_by_role[USER_ROLE_COLLECTORS].last_action
-                _garbage, command = command_head.split(maxsplit=1)
+                if command_head != 'collect':
+                    _garbage, command = command_head.split(maxsplit=1)
+                else:
+                    command = ''
             else:
                 last_action = bootstrap_by_role[USER_ROLE_MAKERS].last_action
                 command = command_head
@@ -411,7 +456,7 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
         print('sync point: ', role_name)
         print(bootstrap.sync_point_df.to_string(index=False))
         print('building inventory df from sync point and updates: ', role_name)
-        bootstrap.rebuild_inventory_df_from_log()
+        bootstrap.rebuild_inventory_df_from_sync_n_updates()
 
     for role_name in USER_ROLES_IN_ORDER:
         # Make sure to add them in the right order so we can do simply do iteration when order is important.
@@ -429,6 +474,18 @@ async def _send_df_as_msg_to_user(ctx, df, prefix=''):
     else:
         result = _add_human_interval_col(df)
         result = result.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT, COL_HUMAN_INTERVAL]]
+        result = result.sort_index(axis='index')
+        await ctx.send(prefix + "```{0}```".format(result.to_string(index=False)))
+
+async def _send_dropbox_df_as_msg_to_user(ctx, df, prefix=''):
+    if not len(df):
+        await ctx.send(prefix + "```(no dropbox records)```")
+    else:
+        dropped = df.drop(columns=COL_USER_ID)
+        mapped = await _map_user_id_column_to_display_names(dropped)
+        renamed = mapped.rename(columns={COL_SECOND_USER_ID: COL_COLLECTOR_NAME})
+        result = _add_human_interval_col(renamed)
+        result = result.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT, COL_COLLECTOR_NAME, COL_HUMAN_INTERVAL]]
         result = result.sort_index(axis='index')
         await ctx.send(prefix + "```{0}```".format(result.to_string(index=False)))
 
@@ -817,11 +874,17 @@ async def _map_user_ids_to_display_names(ids, pad_for_print=True):
     return mapped
 
 async def _map_user_id_column_to_display_names(df):
-    ids = df.user_id.unique()
+    ids = set()
+    for user_col_name in USER_ID_COLUMNS:
+        if user_col_name in df:
+            ids = ids.union(df[user_col_name].unique().tolist())
     mapped = await _map_user_ids_to_display_names(ids)
     return df.replace(mapped)
 
 async def _add_user_display_name_column(df):
+    if len(df) == 0:
+        return df.assign(**{COL_USER_NAME: ''})
+
     ids = df.user_id.unique()
     mapped = await _map_user_ids_to_display_names(ids, pad_for_print=False)
     new_col = df.apply(lambda row: mapped[row[COL_USER_ID]], axis=1)
@@ -872,11 +935,14 @@ from the inventory channel or DM channel.
     async def regroup_df(df):
         mapped = await _map_user_id_column_to_display_names(df)
         renamed = mapped.rename(columns={COL_USER_ID: COL_USER_NAME})
+        if COL_SECOND_USER_ID in renamed:
+            renamed = renamed.rename(columns={COL_SECOND_USER_ID: COL_COLLECTOR_NAME})
         repivoted = renamed.set_index(keys=[COL_ITEM, COL_VARIANT], drop=True)
         groups = repivoted.groupby([COL_ITEM, COL_VARIANT], sort=True)
         return groups
 
     maker_groups = await regroup_df(filtered[USER_ROLE_MAKERS])
+    dropbox_groups = await regroup_df(filtered[USER_ROLE_DROPBOXES])
     collector_groups = await regroup_df(filtered[USER_ROLE_COLLECTORS])
 
     def get_group(g, key):
@@ -886,27 +952,30 @@ from the inventory channel or DM channel.
 
     # Compute total summaries for item/variant
 
-    total_table = pd.DataFrame(columns=[COL_ITEM, COL_VARIANT, "TOTAL", "maker", "collector"])
+    total_table = pd.DataFrame(columns=[COL_ITEM, COL_VARIANT, "TOTAL", "maker", "dropbox", "collector"])
 
     for (com_item, com_variant) in ALL_ITEM_VARIANT_COMBOS:
         maker_table = get_group(maker_groups, (com_item, com_variant))
+        dropbox_table = get_group(dropbox_groups, (com_item, com_variant))
         collector_table = get_group(collector_groups, (com_item, com_variant))
 
         maker_total = maker_table[COL_COUNT].sum() if maker_table is not None else 0
+        dropbox_total = dropbox_table[COL_COUNT].sum() if dropbox_table is not None else 0
         collector_total = collector_table[COL_COUNT].sum() if collector_table is not None else 0
-        grand_total = maker_total + collector_total
+        grand_total = maker_total + dropbox_total + collector_total
         if not grand_total:
             continue
-        total_table.loc[len(total_table)] = [com_item, com_variant, grand_total, maker_total, collector_total]
+        total_table.loc[len(total_table)] = [com_item, com_variant, grand_total, maker_total, dropbox_total, collector_total]
 
-    # Comptue detailed tables per item/variant
+    # Compute detailed tables per item/variant
 
-    def process_groups(groups):
+    def process_groups(groups, sort_columns=None):
         processed_list = []
         for index, table in groups:
             # Note that 'sparsify' works on all index columns, except for the very last index column.
-            ordered = table.sort_values(COL_USER_NAME)
-            ordered = ordered[[COL_COUNT, COL_USER_NAME, COL_UPDATE_TIME]]
+            sort_columns = sort_columns or [COL_USER_NAME]
+            ordered = table.sort_values(sort_columns)
+            ordered = ordered[[COL_COUNT] + sort_columns + [COL_UPDATE_TIME]]
             ordered = _add_human_interval_col(ordered)
             ordered = ordered.drop(columns=COL_UPDATE_TIME)
 
@@ -916,13 +985,17 @@ from the inventory channel or DM channel.
         return processed_list
 
     maker_processed = process_groups(maker_groups)
+    dropbox_processed = process_groups(dropbox_groups, sort_columns=[COL_USER_NAME, COL_COLLECTOR_NAME])
     collector_processed = process_groups(collector_groups)
 
     detailed_breakdown = ''
-    for processed_label, processed in (('Makers', maker_processed), ('Collectors', collector_processed)):
-        detailed_breakdown += processed_label
-        for entry in processed:
-            detailed_breakdown += entry
+    for processed_label, processed in (('Makers', maker_processed),
+                                       ('Dropboxes', dropbox_processed),
+                                       ('Collectors', collector_processed)):
+        if processed:
+            detailed_breakdown += processed_label
+            for entry in processed:
+                detailed_breakdown += entry
 
     if ctx.message.channel.type == discord.ChannelType.private and not DEBUG_PRETEND_DM_IS_INVENTORY:
         msg = "Summary:\n```{0}```".format(total_table.to_string(index=False))
@@ -1165,9 +1238,13 @@ collect from @Freddie 50 earsaver: some items such as ear-savers have no variant
     collector_author = ctx.message.author
     print('Command: collect from {0} {1} {2} {3} ({4})'.format(
         maker, num, item, variant, collector_author.display_name))
+    await _collect_from(ctx, maker, num, item, variant)
+
+async def _collect_from(ctx, maker: discord.Member, num: int, item: str, variant: str = None, trial_run_only=False):
+    collector_author = ctx.message.author
 
     if isinstance(maker, str):
-        # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
+        # This is needed for 'sudo' command to invoke this function without the benefit of built-in converters.
         converter= commands.MemberConverter()
         maker_input = maker
         maker = await converter.convert(ctx, maker_input)
@@ -1177,13 +1254,132 @@ collect from @Freddie 50 earsaver: some items such as ear-savers have no variant
         # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
         num = int(num)
 
+    if num == 0:
+        await ctx.send("❌  Collecting 0 items is not a very useful exercise.")
+        return
+
     # Make a trial run to bail out early if args are incorrect, so that we can guarantee the success of the
     # actual transfer which consists of two separate commands, in a pseudo-atomic fashion.
-    for trial_type in (True, False):
+    ctx.message.author = maker
+    if None is await _count(ctx, -num, item, variant, delta=True, role=USER_ROLE_MAKERS, trial_run_only=True):
+        return
+    ctx.message.author = collector_author
+    if None is await _count(ctx, num, item, variant, delta=True, role=USER_ROLE_COLLECTORS, trial_run_only=True):
+        return
+
+    if trial_run_only:
+        return num, item, variant
+
+    ctx.message.author = maker
+    await _count(ctx, -num, item, variant, delta=True, role=USER_ROLE_MAKERS)
+    ctx.message.author = collector_author
+    await _count(ctx, num, item, variant, delta=True, role=USER_ROLE_COLLECTORS)
+
+@bot.group(
+    brief="Tools for makers to move items to dropboxes",
+    description="Tools for makers to move items to dropboxes:",
+)
+async def drop(ctx):
+    """
+There are subcommands under 'drop'. Type 'help drop' to see these subcommands. \
+You can also type 'help drop for' to see help page for a specific subcommand 'for'. \
+If you run 'drop' without a subcommand, it shows you your current dropbox inventory you maintain with collectors.
+"""
+    maker_author = ctx.message.author
+    print('Command: drop (group) ({0})'.format(maker_author.display_name))
+
+@drop.command(
+    name='for',
+    brief="A maker drops items into a collector's drop box",
+    description="A maker drops items into a collector's drop box:")
+async def drop_for(ctx, collector: discord.Member, num: str, item: str = None, variant: str = None):
+    """
+This transfers items out of a maker's inventory, but not quite into a collector's inventory, \
+unlike the command 'collect from'. The items are temporarily housed in a collector's drop box. \
+Once the collector confirms the drop-off using an OK 👌 reaction, then the bot moves these items \
+from the drop box into the collector's inventory.
+
+Type 'help count' to see descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
+
+drop for @Katy all - drop all items types in maker's inventory into Katy's drop box
+drop for @Katy all ver - drop all variants of Verkstan made into the drop box
+drop for @Katy 20 ver pet - drop only 20 out of current Verkstan PETG inventory
+drop for @Katy -10 ver pet - take back 10 Verkstans
+"""
+    maker = ctx.message.author
+    print('Command: drop for {0} {1} {2} {3} ({4})'.format(collector, num, item, variant, maker.display_name))
+
+    if num == 'all':
+        num, _item, _variant = await _count(ctx, 0, item, variant, delta=True,
+                role=USER_ROLE_MAKERS, trial_run_only=True)
+    else:
+        try:
+            num = int(num)
+        except:
+            await ctx.send("❌  'all' or a number is exepcted. Got '{0}'. See help.".format(num))
+            await ctx.send_help(ctx.command)
+            return
+
+    if num == 0:
+        await ctx.send("❌  Dropping off 0 items is not a very useful exercise.")
+        return
+
+    is_collector = await _user_has_role(collector, COLLECTOR_ROLE_NAME)
+    if not is_collector:
+        await ctx.send("❌  '{0}' needs to be a collector for this drop to be successful.".format(collector))
+        raise NotEntitledError()
+
+    # Make a trial run to bail out early if args are incorrect, so that we can guarantee the success of the
+    # actual transfer which consists of two separate commands, in a pseudo-atomic fashion.
+    ctx.message.author = maker
+    result = await _count(ctx, -num, item, variant, delta=True, role=USER_ROLE_MAKERS, trial_run_only=True)
+    if result is None:
+        return
+    _current_maker_count, confirmed_item, confirmed_variant = result
+
+    if num >= 0:
+        # Let the 'collect from' command check for the validity of this proposed transaction.
+        # After all, some collector will eventually need to 'collect' these items.
+        ctx.message.author = collector
+        if None is await _collect_from(ctx, maker, num, confirmed_item, confirmed_variant, trial_run_only=True):
+            return
+
+    # Take current count of dropbox entry for this maker-collector-item-variant combination
+
+    df = INVENTORY_BY_USER_ROLE[USER_ROLE_DROPBOXES]
+    maker_user_id = maker.id
+    collector_user_id = collector.id
+
+    current_dropped_count = 0
+    cond = (df[COL_USER_ID] == maker_user_id) & (df[COL_ITEM] == confirmed_item) & \
+           (df[COL_VARIANT] == confirmed_variant) & (df[COL_SECOND_USER_ID] == collector_user_id)
+    rows = df[cond]
+    if len(rows) == 1:
+        row = rows.iloc[0]
+        current_dropped_count = row[COL_COUNT]
+    new_dropbox_count = num + current_dropped_count
+
+    if new_dropbox_count < 0:
         ctx.message.author = maker
-        await _count(ctx, -num, item, variant, delta=True, role=USER_ROLE_MAKERS, trial_run_only=trial_type)
-        ctx.message.author = collector_author
-        await _count(ctx, num, item, variant, delta=True, role=USER_ROLE_COLLECTORS, trial_run_only=trial_type)
+        await ctx.send("❌  Dropbox count would become negative after this operation: '{0}'.".format(new_dropbox_count))
+        raise NotEntitledError()
+
+    # -- OK. Let's do it
+
+    # Update maker inventory side of the transaction
+    ctx.message.author = maker
+    await _count(ctx, -num, confirmed_item, confirmed_variant, delta=True, role=USER_ROLE_MAKERS)
+
+    # Update dropbox side of the transaction
+    ctx.message.author = maker
+    txt = '{0} {1} {2} {3}'.format(collector.mention, new_dropbox_count, confirmed_item, confirmed_variant)
+    await _post_user_record_to_trans_log(ctx, 'dropbox count', txt)
+
+    # Only update memory DF after we have persisted the message to the inventory channel.
+    df.loc[(maker_user_id, confirmed_item, confirmed_variant, collector_user_id)] = \
+        [maker_user_id, confirmed_item, confirmed_variant, collector_user_id, new_dropbox_count, datetime.utcnow()]
+    msg_prefix = "previous count: {0}  delta: {1}".format(current_dropped_count, num)
+    await _send_dropbox_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == maker_user_id)], prefix=msg_prefix)
 
 if __name__ == '__main__':
     bot.run(get_bot_token())
