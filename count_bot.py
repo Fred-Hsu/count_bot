@@ -35,7 +35,7 @@ INVENTORY_CHANNEL = os.getenv("COUNT_BOT_INVENTORY_CHANNEL", 'bot-inventory')  #
 ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
-
+MSG_HISTORY_TROLLING_LIMIT = 4000  # How many messages do we read back from transaction log until we hit a sync point?
 CODE_VERSION = '0.4'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
 
 # DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
@@ -180,6 +180,7 @@ bot = commands.Bot(
         no_category='Commands',
         dm_help=True,   # Set to True to redirect help text that are too long to user's own DM channels
     ),
+    # max_messages=10000,  # I found this not to be useful. Doesn't help getting processed reactions.
 )
 
 class NotEntitledError(commands.errors.CommandError):
@@ -282,7 +283,7 @@ class TransLogAction(NamedTuple):
 async def _process_one_trans_record(member, last_action, text, item, variant, command, update_time):
     key = (member.id, item, variant)
     if key in last_action:
-        print("{:60} {}".format(text, 'superseded by count or remove'))
+        print("{} {:60} {}".format(update_time, text, 'superseded by count or remove'))
         return
     else:
         if (item, variant) == ('remove', 'all'):
@@ -290,17 +291,17 @@ async def _process_one_trans_record(member, last_action, text, item, variant, co
                 combo_key = (member.id, combo[0], combo[1])
                 if combo_key not in last_action:
                     last_action[combo_key] = TransLogAction(None, update_time)
-            print("{:60} {}".format(text, 'remove all'))
+            print("{} {:60} {}".format(update_time, text, 'remove all'))
             return
         elif command.startswith('remove'):
             last_action[key] = TransLogAction(None, update_time)
-            print("{:60} {}".format(text, command))
+            print("{} {:60} {}".format(update_time, text, command))
         elif command.startswith('count'):
             parts = command.split()
             last_action[key] = TransLogAction(int(parts[1]), update_time)
-            print("{:60} {}".format(text, command))
+            print("{} {:60} {}".format(update_time, text, command))
         else:
-            print("{:60} {}".format(text, 'I DO NOT UNDERSTAND THIS COMMAND'))
+            print("{} {:60} {}".format(update_time, text, 'I DO NOT UNDERSTAND THIS COMMAND'))
 
 class RoleBootstrap:
     # This tracks the last action performed by a user on an item + variant.
@@ -379,7 +380,7 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
 
     # Channel history is returned in reverse chronological order.
     # Troll through these entries and process only transaction log-type messages posted by the bot itself.
-    async for msg in ch.history():
+    async for msg in ch.history(limit=MSG_HISTORY_TROLLING_LIMIT):
         text = msg.content
 
         if msg.author != bot.user:
@@ -415,14 +416,13 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
                 csv_text = tables[i]
                 bootstrap_by_role[role_name].read_sync_point_csv(csv_text)
 
-            print("{:60} sync point - stop trolling".format(text))
+            print("{} {:60} sync point - stop trolling".format(msg.created_at, text))
             break
 
         if msg.mentions:
             # Messages with mentions are records created in response to a user action
             member = msg.mentions[0]
             head, item, variant = text.rsplit(maxsplit=2)
-
             if variant in ITEMS_WITH_NO_VARIANTS:
                 head += ' ' + item
                 item = variant
@@ -988,25 +988,32 @@ from the inventory channel or DM channel.
     dropbox_processed = process_groups(dropbox_groups, sort_columns=[COL_USER_NAME, COL_COLLECTOR_NAME])
     collector_processed = process_groups(collector_groups)
 
-    detailed_breakdown = ''
+    detailed_breakdowns = []
     for processed_label, processed in (('Makers', maker_processed),
                                        ('Dropboxes', dropbox_processed),
                                        ('Collectors', collector_processed)):
         if processed:
-            detailed_breakdown += processed_label
-            for entry in processed:
-                detailed_breakdown += entry
+            breakdown= processed_label
+            breakdown += ''.join(processed)
+
+            # FIXME - check that breakdown is less than 2,000 chars. Trim it and add disclaimer about chopped-off content.
+            detailed_breakdowns.append(breakdown)
 
     if ctx.message.channel.type == discord.ChannelType.private and not DEBUG_PRETEND_DM_IS_INVENTORY:
         msg = "Summary:\n```{0}```".format(total_table.to_string(index=False))
-        msg += detailed_breakdown
         await ctx.send(msg)
+
+        # I have to break up different roles. Each Discord message has a server-side hardl imit of 2,000.
+        for detail_by_role in detailed_breakdowns:
+            await ctx.send(detail_by_role)
     else:
         msg = "Summary shown here. Detailed report sent to your DM channel.\n```{0}```".format(total_table.to_string(index=False))
         await ctx.send(msg)
-        msg = "Detailed breakdown: {0} {1}\n".format(item or '', variant or '')
-        msg += detailed_breakdown
-        await ctx.message.author.send(msg)
+
+        # I have to break up different roles. Each Discord message has a server-side hardl imit of 2,000.
+        for detail_by_role in detailed_breakdowns:
+            msg = "Detailed breakdown: {0} {1}\n".format(item or '', variant or '')
+            await ctx.message.author.send(msg + detail_by_role)
 
 async def _user_has_role(user, role_name):
     member = await _map_dm_user_to_member(user)
