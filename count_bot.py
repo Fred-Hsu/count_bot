@@ -47,11 +47,7 @@ DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic 
 
 # FIXME - Leon and Vinny want the bot to generate CSV on demand - probably send to DM channel for now
 # FIXME - add a 'drop-off' command to move items to a dropped box. Collectors add an emoji to confirm. Tnx rebuild looks for reactions in msgs.
-#         checked - create dictionary of DFs for all roles. Change all code to interate over all roles instead of hardcoded and duplicated code for maker/collectors
-#         future - (alternatively, in memory keep everyting in one DF, with an additional column=role), but save as separate tables)
-#         checked - Test backward compatibility of CSV
 #         then add a third role 'dropped', between maker and collector. Implement 'drop' command. Allow collectors to apply msg response.
-#         new table column - need user ids of both collector and maker - this is the PK of the drop box.
 #         'collect' shows maker's dropped entries if non-empty. 'Report shows 'dropped' in summmary, and as part of 'collectors' detail tables.
 #         read new 'drop' transaction log entries with maker and collector names.
 # FIXME - add command to produce sync point csv on demand, but only send to DM channel for manual backup
@@ -259,6 +255,31 @@ async def on_ready():
 async def on_raw_reaction_add(payload):
     print("Reaction add: {0}".format(payload))
 
+    if payload.guild_id is None:
+        print('  Ignore DM reactions')
+        return
+
+    if payload.emoji.name != '💯':
+        print('  Ignore emojis that are not 💯')
+        return
+
+    is_collector = await _user_has_role(payload.member, COLLECTOR_ROLE_NAME)
+    if not is_collector:
+        print('  Ignore reactions from non-collectors')
+        return
+
+    collector = payload.member
+    ch = _get_inventory_channel()
+    msg = await ch.fetch_message(payload.message_id)
+
+    result = parse_dropbox_count_trnx_log_entry(msg)
+    if not result:
+        print('  Not a dropbox count record')
+        return
+
+    maker, collector, count, item, variant = result
+    # FIXME - not yet done
+
 @bot.event
 async def on_raw_reaction_remove(payload):
     print("Reaction remove: {0}".format(payload))
@@ -275,37 +296,6 @@ def _get_inventory_channel():
         if ch.name == INVENTORY_CHANNEL:
             return ch
     raise RuntimeError('No channel named "{0}" found'.format(INVENTORY_CHANNEL))
-
-class TransLogAction(NamedTuple):
-    count: Optional[int]
-    update_time: datetime
-
-async def _process_one_trans_record(member, last_action, text, item, variant, command, update_time, collector):
-    if not collector:
-        key = (member.id, item, variant)
-    else:
-        key = (member.id, collector.id, item, variant)
-
-    if key in last_action:
-        print("{} {:60} {}".format(update_time, text, 'superseded by count or remove'))
-        return
-    else:
-        if (item, variant) == ('remove', 'all'):
-            for combo in ALL_ITEM_VARIANT_COMBOS:
-                combo_key = (member.id, combo[0], combo[1])
-                if combo_key not in last_action:
-                    last_action[combo_key] = TransLogAction(None, update_time)
-            print("{} {:80} {}".format(update_time, text, 'remove all'))
-            return
-        elif command.startswith('remove'):
-            last_action[key] = TransLogAction(None, update_time)
-            print("{} {:80} {}".format(update_time, text, command))
-        elif command.startswith('count'):
-            parts = command.split()
-            last_action[key] = TransLogAction(int(parts[1]), update_time)
-            print("{} {:80} {}".format(update_time, text, command))
-        else:
-            print("{} {:80} {}".format(update_time, text, 'I DO NOT UNDERSTAND THIS COMMAND'))
 
 class RoleBootstrap:
     # This tracks the last action performed by a user on an item + variant.
@@ -381,6 +371,68 @@ BOOTSTRAP_CLASS_BY_USER_ROLE = {
     USER_ROLE_COLLECTORS:   RoleBootstrap,
     USER_ROLE_DROPBOXES:    TransactionRoleBootstrap,
 }
+
+def parse_dropbox_count_trnx_log_entry(msg):
+    text = msg.content
+    if msg.author != bot.user:
+        return
+    if not text.startswith('✅ '):
+        return
+    if not msg.mentions:
+        return
+
+    if text.endswith(' (from DM chat)'):
+        text = text[:-15]
+
+    result = text.rsplit(maxsplit=7)
+    if len(result) != 8:
+        return
+
+    _check, maker_plus_semi, _drop, _count, collector_str, count, item, variant = result
+    if _drop != 'dropbox' or _count != 'count':
+        return
+
+    maker_str, _semi = maker_plus_semi.split(':')
+    maker_str = maker_str.strip('<@!>')
+    collector_str = collector_str.strip('<@!>')
+    count = int(count)
+
+    mention_map = dict([(str(m.id), m) for m in msg.mentions])
+    maker = mention_map[maker_str]
+    collector = mention_map[collector_str]
+
+    return maker, collector, count, item, variant
+
+class TransLogAction(NamedTuple):
+    count: Optional[int]
+    update_time: datetime
+
+async def _process_one_trans_record(member, last_action, text, item, variant, command, update_time, collector):
+    if not collector:
+        key = (member.id, item, variant)
+    else:
+        key = (member.id, collector.id, item, variant)
+
+    if key in last_action:
+        print("{} {:60} {}".format(update_time, text, 'superseded by count or remove'))
+        return
+    else:
+        if (item, variant) == ('remove', 'all'):
+            for combo in ALL_ITEM_VARIANT_COMBOS:
+                combo_key = (member.id, combo[0], combo[1])
+                if combo_key not in last_action:
+                    last_action[combo_key] = TransLogAction(None, update_time)
+            print("{} {:80} {}".format(update_time, text, 'remove all'))
+            return
+        elif command.startswith('remove'):
+            last_action[key] = TransLogAction(None, update_time)
+            print("{} {:80} {}".format(update_time, text, command))
+        elif command.startswith('count'):
+            parts = command.split()
+            last_action[key] = TransLogAction(int(parts[1]), update_time)
+            print("{} {:80} {}".format(update_time, text, command))
+        else:
+            print("{} {:80} {}".format(update_time, text, 'I DO NOT UNDERSTAND THIS COMMAND'))
 
 async def _retrieve_inventory_df_from_transaction_log() -> int:
     """
@@ -1429,9 +1481,13 @@ drop for @Katy -10 ver pet - take back 10 Verkstans
     txt = '{0} {1} {2} {3}'.format(collector.mention, new_dropbox_count, confirmed_item, confirmed_variant)
     await _post_user_record_to_trans_log(ctx, 'dropbox count', txt)
 
+    if new_dropbox_count != 0:
+        df.loc[(maker_user_id, confirmed_item, confirmed_variant, collector_user_id)] = \
+            [maker_user_id, confirmed_item, confirmed_variant, collector_user_id, new_dropbox_count, datetime.utcnow()]
+    else:
+        df.drop((maker_user_id, confirmed_item, confirmed_variant, collector_user_id), inplace=True)
+
     # Only update memory DF after we have persisted the message to the inventory channel.
-    df.loc[(maker_user_id, confirmed_item, confirmed_variant, collector_user_id)] = \
-        [maker_user_id, confirmed_item, confirmed_variant, collector_user_id, new_dropbox_count, datetime.utcnow()]
     msg_prefix = "previous count: {0}  delta: {1}".format(current_dropped_count, num)
     await _send_dropbox_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == maker_user_id)], prefix=msg_prefix)
 
