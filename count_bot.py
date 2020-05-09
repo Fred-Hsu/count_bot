@@ -352,14 +352,15 @@ class TransactionRoleBootstrap(RoleBootstrap):
     def rebuild_inventory_df_from_sync_n_updates(self):
         rows = []
         for (maker_id, collector_id, item, variant), action in self.last_action.items():
-            if action.count is not None:
+            # Do not record '0' count in transaction tables such as drop-box
+            if action.count:
                 rows.append((maker_id, item, variant, collector_id, action.count, action.update_time))
 
         for index, row in self.sync_point_df.iterrows():
             key = (row[COL_USER_ID], row[COL_SECOND_USER_ID], row[COL_ITEM], row[COL_VARIANT])
-            if key not in self.last_action:
-                rows.append(
-                    (row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_SECOND_USER_ID], row[COL_COUNT], row[COL_UPDATE_TIME]))
+            if key not in self.last_action and row[COL_COUNT] != 0:
+                rows.append((row[COL_USER_ID], row[COL_ITEM], row[COL_VARIANT], row[COL_SECOND_USER_ID],
+                             row[COL_COUNT], row[COL_UPDATE_TIME]))
         pprint(rows, width=120)
 
         df = pd.DataFrame(rows, columns=self.df_columns)
