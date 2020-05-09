@@ -621,6 +621,20 @@ async def _post_user_record_to_trans_log(ctx, command_text, detail_text):
     else:
         await ctx.send('✅ ' + trans_text)
 
+async def show_maker_inventory_and_dropbox(ctx):
+    maker_id = ctx.message.author.id
+    maker_df = INVENTORY_BY_USER_ROLE[USER_ROLE_MAKERS]
+    maker_cond = maker_df[COL_USER_ID] == maker_id
+
+    await _send_df_as_msg_to_user(ctx, maker_df[maker_cond], prefix="Your maker inventory:")
+
+    dropbox_df = INVENTORY_BY_USER_ROLE[USER_ROLE_DROPBOXES]
+    dropbox_cond = dropbox_df[COL_USER_ID] == maker_id
+    dropbox_found_num = sum(dropbox_cond)
+
+    if dropbox_found_num:
+        await _send_dropbox_df_as_msg_to_user(ctx, dropbox_df[dropbox_cond], prefix="Items you dropped off:")
+
 @bot.command(
     brief="Update the current count of items from a maker",
     description='Update the current {total} count of an {item} of {variant} type from a maker:')
@@ -674,6 +688,10 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
     if isinstance(total, str):
         # This is needed for 'sudo' command to invoke this function without the benefit of built-in convertors.
         total = int(total)
+
+    if role == USER_ROLE_MAKERS and not item and not variant and total is None:
+        await show_maker_inventory_and_dropbox(ctx)
+        return
 
     df = INVENTORY_BY_USER_ROLE[role]
 
