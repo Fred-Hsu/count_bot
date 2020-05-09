@@ -1067,6 +1067,7 @@ sudo <collector> collect count [total] [item] [variant]
 sudo <collector> collect remove [item] [variant]
 sudo <collector> collect reset [item] [variant]
 sudo <collector> collect from <maker> [count] [item] [variant]
+sudo <maker> drop for <collector> [count] [item] [variant]
 """
     sudo_author = ctx.message.author
     print('Command: sudo {0} {1} {2} ({3})'.format(member, command, args, sudo_author.display_name))
@@ -1081,6 +1082,7 @@ sudo <collector> collect from <maker> [count] [item] [variant]
         # Useful for adding admins
         await ctx.send("{0}, # {1}".format(member.id, member.display_name))
         return
+
     elif command == 'collect':
         command = command + ' ' + args[0]
         args = args[1:]
@@ -1090,8 +1092,13 @@ sudo <collector> collect from <maker> [count] [item] [variant]
             await ctx.send("❌  '{0}' needs to have the collector role, for this sudo collect command to work.".format(member))
             raise NotEntitledError()
 
+    elif command == 'drop':
+        command = command + ' ' + args[0]
+        args = args[1:]
+
     if command not in ('count', 'remove', 'add', 'reset',
-                       'collect count', 'collect remove', 'collect add', 'collect reset', 'collect from'):
+                       'collect count', 'collect remove', 'collect add', 'collect reset', 'collect from',
+                       'drop for'):
         await ctx.send("❌  command '{0}' not supported by sudo".format(command))
         return
 
@@ -1363,6 +1370,13 @@ drop for @Katy -10 ver pet - take back 10 Verkstans
     if num == 0:
         await ctx.send("❌  Dropping off 0 items is not a very useful exercise.")
         return
+
+    if isinstance(collector, str):
+        # This is needed for 'sudo' command to invoke this function without the benefit of built-in converters.
+        converter= commands.MemberConverter()
+        collector_input = collector
+        collector = await converter.convert(ctx, collector_input)
+        print("converted '{0}' to '{1}'".format(collector_input, collector))
 
     is_collector = await _user_has_role(collector, COLLECTOR_ROLE_NAME)
     if not is_collector:

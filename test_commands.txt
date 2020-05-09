@@ -280,6 +280,11 @@ drop for Freddie -2 pru pla
 drop for justin all pru pla
 drop for justin all ver
 
+. Sudo drop for
+sudo Freddie drop for justin -2 verk pet
+sudo Freddie drop for justin 3 verk pet
+
+
 
 
 
