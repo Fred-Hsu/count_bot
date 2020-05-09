@@ -45,7 +45,10 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
+# FIXME - simplify 'drop for' to just 'drop'
+#       - users also look at the checkmark transaction record and mimic that - I need to make the record the same
 # FIXME - Leon and Vinny want the bot to generate CSV on demand - probably send to DM channel for now
+#         Julie doesn't need forecast counts. She needs actual 'collected' ledger transactions.
 # FIXME - add a 'drop-off' command to move items to a dropped box. Collectors add an emoji to confirm. Tnx rebuild looks for reactions in msgs.
 #         then add a third role 'dropped', between maker and collector. Implement 'drop' command. Allow collectors to apply msg response.
 #         'collect' shows maker's dropped entries if non-empty. 'Report shows 'dropped' in summmary, and as part of 'collectors' detail tables.
