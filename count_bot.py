@@ -45,8 +45,7 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - Leon and Vinny want the bot to generate CSV on demand - probably send to DM channel for now
-#         Julie doesn't need forecast counts. She needs actual 'collected' ledger transactions.
+# FIXME - Julie doesn't need forecast counts. She needs actual 'collected' ledger transactions.
 # FIXME - add a 'drop-off' command to move items to a dropped box. Collectors add an emoji to confirm. Tnx rebuild looks for reactions in msgs.
 #         then add a third role 'dropped', between maker and collector. Implement 'drop' command. Allow collectors to apply msg response.
 #         'collect' shows maker's dropped entries if non-empty. 'Report shows 'dropped' in summmary, and as part of 'collectors' detail tables.
@@ -213,7 +212,7 @@ async def on_command_error(ctx, error):
         print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
         traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
-async def _post_sync_point_to_trans_log():
+async def _generate_inventory_csv_file():
     s_buf = io.StringIO()
 
     for _role, inventory_df in INVENTORY_BY_USER_ROLE.items():
@@ -224,6 +223,10 @@ async def _post_sync_point_to_trans_log():
     s_buf.write("version\n'{0}'\n".format(CODE_VERSION))
     s_buf.seek(0)
     file = discord.File(s_buf, PRODUCT_CSV_FILE_NAME)
+    return file
+
+async def _post_sync_point_to_trans_log():
+    file = await _generate_inventory_csv_file()
     sync_text = '✅ ' + "Bot restarted: sync point"
 
     if DEBUG_DISABLE_STARTUP_INVENTORY_SYNC:
@@ -1019,8 +1022,27 @@ async def _add_user_display_name_columns(df):
     return df.assign(**new_columns)
 
 @bot.command(
+    brief="Generate Excel-compatible CSV report",
+    description="Generate Excel-compatible CSV report:")
+async def excel(ctx):
+    """
+This sends a CSV attachment to your DM (direct message) channel. \
+This comma-separated-values file contains a few separate tables: \
+Maker Inventory, Collector Inventory, and Dropboxes. \
+Click on the CSV attachment to download it to your own desktop. \
+You can open this in Excel to look at tables.
+"""
+    print('Command: excel ({0})'.format(ctx.message.author.display_name))
+
+    file = await _generate_inventory_csv_file()
+    await ctx.message.author.send("Inventory report in Excel-compatible CSV format:", file=file)
+
+    if ctx.message.channel.type != discord.ChannelType.private:
+        await ctx.send('CSV file sent to your DM channel.')
+
+@bot.command(
     brief="Report total inventory in the system",
-    description="Report inventory of items by all users, broken down by item, variant and user.")
+    description="Report inventory of items by all users, broken down by item, variant and user:")
 async def report(ctx, item: str = None, variant: str = None):
     """
 'item' and 'variant' are optional. Use them to limit the types of items to report.
@@ -1149,7 +1171,7 @@ async def _user_has_role(user, role_name):
 
 @bot.command(
     brief="Admin executing commands on behalf of a user",
-    description="Admin executing commands on behalf of a user.")
+    description="Admin executing commands on behalf of a user:")
 async def sudo(ctx, member: discord.Member, command: str, *args):
     """
 Only admins can execute sudo. 'member' may be @alias (in the inventory room) or 'alias' alone (in DM channels). \
@@ -1235,7 +1257,7 @@ The argument [are] is always ignored. It's just there so you can ask:
 
 @bot.command(
     brief="Admin instructs an extraneous bot to bow out",
-    description="Admin instructs an extraneous bot to bow out.")
+    description="Admin instructs an extraneous bot to bow out:")
 async def kamikaze(ctx, pid: int):
     """
 Only admins can kill a bot. Use 'who are you' to find the pid of the right bot in the spoiler text.
