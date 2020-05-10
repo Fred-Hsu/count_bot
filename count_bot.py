@@ -36,7 +36,7 @@ ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
 MSG_HISTORY_TROLLING_LIMIT = 4000  # How many messages do we read back from transaction log until we hit a sync point?
-CODE_VERSION = '0.5'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
+CODE_VERSION = '0.6'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
 
 # DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
 # TODO - Probably should turn into real config parameter stored in _discord_config_no_commit.txt
@@ -108,6 +108,10 @@ COL_MAKER_NAME = 'maker'
 COL_COLLECTOR_NAME = 'collector'
 
 USER_ID_COLUMNS = (COL_USER_ID, COL_SECOND_USER_ID)
+USER_ID_TO_NAME_MAP = {
+    COL_USER_ID: COL_USER_NAME,
+    COL_SECOND_USER_ID: COL_SECOND_USER_NAME,
+}
 
 TIME_DIFF = datetime.utcnow() - datetime.now()
 
@@ -130,6 +134,7 @@ USER_ROLE_DROPBOXES = 'dropboxes'  # Dropboxes serving as intermediate buffer be
 # maps 'makers' (USER_ROLE_MAKERS), 'collectors', etc to dataframes that store per-role inventory
 INVENTORY_BY_USER_ROLE = OrderedDict()
 
+# DO NOT CHANGE THE ORDER OF ITEMS IN THIS LIST WITHOUT CAREFUL CONSIDERATION.
 # The order of items in this list is important. It is used to persist CSV tables into CSV sync point
 USER_ROLES_IN_ORDER = [USER_ROLE_MAKERS, USER_ROLE_COLLECTORS, USER_ROLE_DROPBOXES]
 
@@ -212,7 +217,7 @@ async def _post_sync_point_to_trans_log():
     s_buf = io.StringIO()
 
     for _role, inventory_df in INVENTORY_BY_USER_ROLE.items():
-        modified_df = await _add_user_display_name_column(inventory_df)
+        modified_df = await _add_user_display_name_columns(inventory_df)
         modified_df.to_csv(s_buf, index=False)
         s_buf.write('\n')
 
@@ -324,6 +329,9 @@ class RoleBootstrap:
 
         if COL_USER_NAME in sync_df:  # Code before V0.3 did not have user name column
             sync_df.drop(columns=COL_USER_NAME, inplace=True)
+
+        if COL_SECOND_USER_NAME in sync_df:  # Code before V0.6 did not have user name column
+            sync_df.drop(columns=COL_SECOND_USER_NAME, inplace=True)
 
         if COL_UPDATE_TIME not in sync_df:  # CSV before V0.3 did not have update time column
             sync_df[COL_UPDATE_TIME] = datetime.utcnow()
@@ -986,14 +994,29 @@ async def _map_user_id_column_to_display_names(df):
     mapped = await _map_user_ids_to_display_names(ids)
     return df.replace(mapped)
 
-async def _add_user_display_name_column(df):
-    if len(df) == 0:
-        return df.assign(**{COL_USER_NAME: ''})
+async def _add_user_display_name_columns(df):
+    columns = {}
+    ids = set()
+    for user_col_name in USER_ID_COLUMNS:
+        if user_col_name in df:
+            columns[USER_ID_TO_NAME_MAP[user_col_name]] = ''
+            ids = ids.union(df[user_col_name].unique().tolist())
+    mapped = await _map_user_ids_to_display_names(ids)
 
-    ids = df.user_id.unique()
+    if len(df) == 0:
+        return df.assign(**columns)
+
     mapped = await _map_user_ids_to_display_names(ids, pad_for_print=False)
-    new_col = df.apply(lambda row: mapped[row[COL_USER_ID]], axis=1)
-    return df.assign(**{COL_USER_NAME: new_col.values})
+    new_columns = {}
+    for user_col_name in USER_ID_COLUMNS:
+        if user_col_name in df:
+            name_column = USER_ID_TO_NAME_MAP[user_col_name]
+            new_column = df.apply(lambda row: mapped[row[user_col_name]], axis=1)
+            new_columns[name_column] = new_column.values
+
+    print(new_columns)
+
+    return df.assign(**new_columns)
 
 @bot.command(
     brief="Report total inventory in the system",
