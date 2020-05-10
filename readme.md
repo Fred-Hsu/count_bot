@@ -4,7 +4,7 @@ Discoard bot that keeps count of current numbers of face shields in each person'
 
 The basic idea behind Count Bot is vey simple. Don't be fooled by the number of commands you see when you type 'help'. The basic workflow involves only three commands: **count**, **collect** and **report**. The rest of commands exist to cover rare use cases. 
 
-### For makers ###
+### Makers ###
 
 Most folks in the group are printing head bands, punching sheets, and supporting pieces. You are makers. 
 Each maker has got a box of **items** you have produced. Item types include: **Prusa** head band, 
@@ -101,7 +101,7 @@ Count Bot:
      0  verkstan   PLA
 </pre>
 
-## Makers marking drop-offs ##
+### Makers marking drop-offs ###
 
 There is a second way for collectors to move items from maker inventories into her collector inventory.
 This involves a two-step process, but is actually easier to carry out. It also mimicks real-life actions.
@@ -121,6 +121,19 @@ count   item       variant
 ✅ @Freddie: drop @Nicole 4 verkstan PLA
 count   item       variant   collector
     4   verkstan   PLA       @Nicole  
+</pre>
+
+If you usually talk to the Count Bot from a DM channel, you will not be able to rely
+on Discord to look up collector's display names using the @ character. DM channels are not associated to a
+Discord server such as JCRMRG, so Discord won't help you look up collectors in DM.
+But you can use a Discord 'username' in place of a @{server-specific} nickname. 
+
+For instance, @Justin is a JCRMRG-specific nickname. His Discord username is X_g_Z. Note that usernames are 
+case sensitive. So you can do this from a DM channel:
+
+<pre>
+Freddie:
+<b>drop X_g_Z 3 prusa petg</b>
 </pre>
 
 [NOT YET IMPLEMENTED] - There will be a way for a collector to claim items in these dropboxes.
