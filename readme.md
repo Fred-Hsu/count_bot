@@ -107,7 +107,8 @@ There is a second way for collectors to move items from maker inventories into h
 This involves a two-step process, but is actually easier to carry out. It also mimicks real-life actions.
 
 After a maker drops off 4 Verkstan PLA head bands to Nicole, the maker can issue a 'drop' command to 
-remove these items off his maker inventory, so he can continue to print and count new head bands.
+move these items off his maker inventory, so he can continue to print and count new head bands.
+The following shows how 4 head bands are moved out of Freddie's maker inventory, into a dropbox for Nicole.
 Type 'help drop' to see details about this command.
 
 <pre>
@@ -129,11 +130,21 @@ Discord server such as JCRMRG, so Discord won't help you look up collectors in D
 But you can use a Discord 'username' in place of a @{server-specific} nickname. 
 
 For instance, @Justin is a JCRMRG-specific nickname. His Discord username is X_g_Z. Note that usernames are 
-case sensitive. So you can do this from a DM channel:
+case sensitive. So you can do this from a DM channel. Following illustrates how you can move all of your 
+Prusa PETG items into Justin's dropbox. In this case, 'all' allows you to skip actual counting.
 
 <pre>
 Freddie:
-<b>drop X_g_Z 3 prusa petg</b>
+<b>drop X_g_Z all prusa petg</b>
+</pre>
+
+The above will leave a zero-count entry in your make inventory for Prusa PETG. This allows you to 
+continue counting in the future, without specifying Prusa PETG, if that is the only item type you make.
+But if you no longer plan to make Prusa PETG head band, you can remove it from your maker inventory:
+
+<pre>
+Freddie:
+<b>remove prusa petg</b>
 </pre>
 
 [NOT YET IMPLEMENTED] - There will be a way for a collector to claim items in these dropboxes.

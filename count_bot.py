@@ -45,9 +45,6 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
-# FIXME - In DM channels, you need to use someone's Discord user name, not guild-specific display name - add to guide.
-# FIXME - simplify 'drop for' to just 'drop'
-#       - users also look at the checkmark transaction record and mimic that - I need to make the record the same
 # FIXME - Leon and Vinny want the bot to generate CSV on demand - probably send to DM channel for now
 #         Julie doesn't need forecast counts. She needs actual 'collected' ledger transactions.
 # FIXME - add a 'drop-off' command to move items to a dropped box. Collectors add an emoji to confirm. Tnx rebuild looks for reactions in msgs.
@@ -846,8 +843,8 @@ add 20 prusa - add 20 to current count of a single variant of prusa shield.
     await _count(ctx, num, item, variant, delta=True)
 
 @bot.command(
-    brief="Remove an item type from user's record",
-    description="Remove {item} of {variant} type from user's record:")
+    brief="Remove an item type you no longer make",
+    description="Remove an item type you no longer make:")
 async def remove(ctx, item: str = None, variant: str = None):
     """
 Items and variants are case-insensitive. You can also use aliases such as 'ver', 'verk', 'pru', 'pet' \
