@@ -36,7 +36,7 @@ ADMIN_ROLE_NAME = 'botadmin'        # Users who can run 'sudo' commands
 COLLECTOR_ROLE_NAME = 'collector'   # Users who collect printed items from makers
 PRODUCT_CSV_FILE_NAME = 'product_inventory.csv'  # File name of the product inventory attachment in a sync point
 MSG_HISTORY_TROLLING_LIMIT = 4000  # How many messages do we read back from transaction log until we hit a sync point?
-CODE_VERSION = '0.4'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
+CODE_VERSION = '0.5'  # Increment this whenever the schema of persisted inventory csv or trnx logs change
 
 # DEBUG-ONLY configuration - Leave all these debug flags FALSE for production run.
 # TODO - Probably should turn into real config parameter stored in _discord_config_no_commit.txt
@@ -45,6 +45,7 @@ DEBUG_DISABLE_STARTUP_INVENTORY_SYNC = DEBUG_  # Disable the inventory sync poin
 DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory posting when testing in DM channel
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
+# FIXME - In DM channels, you need to use someone's Discord user name, not guild-specific display name - add to guide.
 # FIXME - simplify 'drop for' to just 'drop'
 #       - users also look at the checkmark transaction record and mimic that - I need to make the record the same
 # FIXME - Leon and Vinny want the bot to generate CSV on demand - probably send to DM channel for now
@@ -254,38 +255,39 @@ async def on_ready():
 # async def on_reaction_add(reaction, user):
 #     print("Reaction: {0} {1}".format(user, reaction))
 
-@bot.event
-async def on_raw_reaction_add(payload):
-    print("Reaction add: {0}".format(payload))
-
-    if payload.guild_id is None:
-        print('  Ignore DM reactions')
-        return
-
-    if payload.emoji.name != '💯':
-        print('  Ignore emojis that are not 💯')
-        return
-
-    is_collector = await _user_has_role(payload.member, COLLECTOR_ROLE_NAME)
-    if not is_collector:
-        print('  Ignore reactions from non-collectors')
-        return
-
-    collector = payload.member
-    ch = _get_inventory_channel()
-    msg = await ch.fetch_message(payload.message_id)
-
-    result = parse_dropbox_count_trnx_log_entry(msg)
-    if not result:
-        print('  Not a dropbox count record')
-        return
-
-    maker, collector, count, item, variant = result
-    # FIXME - not yet done
-
-@bot.event
-async def on_raw_reaction_remove(payload):
-    print("Reaction remove: {0}".format(payload))
+# TODO - temporarily commented out. Will be resurrected when finish implementing reaction-based collection.
+# @bot.event
+# async def on_raw_reaction_add(payload):
+#     print("Reaction add: {0}".format(payload))
+#
+#     if payload.guild_id is None:
+#         print('  Ignore DM reactions')
+#         return
+#
+#     if payload.emoji.name != '💯':
+#         print('  Ignore emojis that are not 💯')
+#         return
+#
+#     is_collector = await _user_has_role(payload.member, COLLECTOR_ROLE_NAME)
+#     if not is_collector:
+#         print('  Ignore reactions from non-collectors')
+#         return
+#
+#     collector = payload.member
+#     ch = _get_inventory_channel()
+#     msg = await ch.fetch_message(payload.message_id)
+#
+#     result = parse_dropbox_count_trnx_log_entry(msg)
+#     if not result:
+#         print('  Not a dropbox count record')
+#         return
+#
+#     maker, collector, count, item, variant = result
+#     # FIXME - not yet done
+#
+# @bot.event
+# async def on_raw_reaction_remove(payload):
+#     print("Reaction remove: {0}".format(payload))
 
 # Never got this triggered. Not sure how this action happens.
 # @bot.event
@@ -376,36 +378,37 @@ BOOTSTRAP_CLASS_BY_USER_ROLE = {
     USER_ROLE_DROPBOXES:    TransactionRoleBootstrap,
 }
 
-def parse_dropbox_count_trnx_log_entry(msg):
-    text = msg.content
-    if msg.author != bot.user:
-        return
-    if not text.startswith('✅ '):
-        return
-    if not msg.mentions:
-        return
-
-    if text.endswith(' (from DM chat)'):
-        text = text[:-15]
-
-    result = text.rsplit(maxsplit=7)
-    if len(result) != 8:
-        return
-
-    _check, maker_plus_semi, _drop, _count, collector_str, count, item, variant = result
-    if _drop != 'dropbox' or _count != 'count':
-        return
-
-    maker_str, _semi = maker_plus_semi.split(':')
-    maker_str = maker_str.strip('<@!>')
-    collector_str = collector_str.strip('<@!>')
-    count = int(count)
-
-    mention_map = dict([(str(m.id), m) for m in msg.mentions])
-    maker = mention_map[maker_str]
-    collector = mention_map[collector_str]
-
-    return maker, collector, count, item, variant
+# TODO - temporarily commented out. Will be resurrected when finish implementing reaction-based collection.
+# def parse_dropbox_count_trnx_log_entry(msg):
+#     text = msg.content
+#     if msg.author != bot.user:
+#         return
+#     if not text.startswith('✅ '):
+#         return
+#     if not msg.mentions:
+#         return
+#
+#     if text.endswith(' (from DM chat)'):
+#         text = text[:-15]
+#
+#     result = text.rsplit(maxsplit=7)
+#     if len(result) != 8:
+#         return
+#
+#     _check, maker_plus_semi, _drop, _count, collector_str, count, item, variant = result
+#     if _drop != 'dropbox' or _count != 'count':
+#         return
+#
+#     maker_str, _semi = maker_plus_semi.split(':')
+#     maker_str = maker_str.strip('<@!>')
+#     collector_str = collector_str.strip('<@!>')
+#     count = int(count)
+#
+#     mention_map = dict([(str(m.id), m) for m in msg.mentions])
+#     maker = mention_map[maker_str]
+#     collector = mention_map[collector_str]
+#
+#     return maker, collector, count, item, variant
 
 class TransLogAction(NamedTuple):
     count: Optional[int]
@@ -517,12 +520,12 @@ async def _retrieve_inventory_df_from_transaction_log() -> int:
                     _garbage, command = command_head.split(maxsplit=1)
                 else:
                     command = ''
-            elif command_head.startswith('dropbox'):
+            elif command_head.startswith('drop'):
                 last_action = bootstrap_by_role[USER_ROLE_DROPBOXES].last_action
-                _cmd, _count, collector_str, count = command_head.split(maxsplit=4)
+                _cmd, collector_str, count = command_head.split(maxsplit=3)
                 collector_str = collector_str.strip('<@!>')
                 collector = mention_map[collector_str]
-                command = 'count-dropbox ' + count
+                command = 'count ' + count
             else:
                 last_action = bootstrap_by_role[USER_ROLE_MAKERS].last_action
                 command = command_head
@@ -1136,12 +1139,13 @@ sudo <maker> add [total] [item] [variant]
 sudo <maker> count [total] [item] [variant]
 sudo <maker> remove [item] [variant]
 sudo <maker> reset [item] [variant]
+sudo <collector> collect
 sudo <collector> collect add [total] [item] [variant]
 sudo <collector> collect count [total] [item] [variant]
 sudo <collector> collect remove [item] [variant]
 sudo <collector> collect reset [item] [variant]
 sudo <collector> collect from <maker> [count] [item] [variant]
-sudo <maker> drop for <collector> [count] [item] [variant]
+sudo <maker> drop <collector> [count] [item] [variant]
 """
     sudo_author = ctx.message.author
     print('Command: sudo {0} {1} {2} ({3})'.format(member, command, args, sudo_author.display_name))
@@ -1158,21 +1162,18 @@ sudo <maker> drop for <collector> [count] [item] [variant]
         return
 
     elif command == 'collect':
-        command = command + ' ' + args[0]
-        args = args[1:]
+        if args:
+            command = command + ' ' + args[0]
+            args = args[1:]
 
         is_collector = await _user_has_role(member, COLLECTOR_ROLE_NAME)
         if not is_collector:
             await ctx.send("❌  '{0}' needs to have the collector role, for this sudo collect command to work.".format(member))
             raise NotEntitledError()
 
-    elif command == 'drop':
-        command = command + ' ' + args[0]
-        args = args[1:]
-
     if command not in ('count', 'remove', 'add', 'reset',
-                       'collect count', 'collect remove', 'collect add', 'collect reset', 'collect from',
-                       'drop for'):
+                       'collect', 'collect count', 'collect remove', 'collect add', 'collect reset', 'collect from',
+                       'drop'):
         await ctx.send("❌  command '{0}' not supported by sudo".format(command))
         return
 
@@ -1394,24 +1395,10 @@ async def _collect_from(ctx, maker: discord.Member, num: int, item: str, variant
     ctx.message.author = collector_author
     await _count(ctx, num, item, variant, delta=True, role=USER_ROLE_COLLECTORS)
 
-@bot.group(
-    brief="Tools for makers to move items to dropboxes",
-    description="Tools for makers to move items to dropboxes:",
-)
-async def drop(ctx):
-    """
-There are subcommands under 'drop'. Type 'help drop' to see these subcommands. \
-You can also type 'help drop for' to see help page for a specific subcommand 'for'. \
-If you run 'drop' without a subcommand, it shows you your current dropbox inventory you maintain with collectors.
-"""
-    maker_author = ctx.message.author
-    print('Command: drop (group) ({0})'.format(maker_author.display_name))
-
-@drop.command(
-    name='for',
+@bot.command(
     brief="A maker drops items into a collector's drop box",
     description="A maker drops items into a collector's drop box:")
-async def drop_for(ctx, collector: discord.Member, num: str, item: str = None, variant: str = None):
+async def drop(ctx, collector: discord.Member, num: str, item: str = None, variant: str = None):
     """
 This transfers items out of a maker's inventory, but not quite into a collector's inventory, \
 unlike the command 'collect from'. The items are temporarily housed in a collector's drop box. \
@@ -1420,13 +1407,13 @@ from the drop box into the collector's inventory.
 
 Type 'help count' to see descriptions of [item] and [variant], and how you can use shorter aliases to reference them.
 
-drop for @Katy all ver - drop all variants of Verkstan made into Katy's drop box
-drop for @Katy all - drop all items of same type in maker's inventory
-drop for @Katy 20 ver pet - drop only 20 out of current Verkstan PETG inventory
-drop for @Katy -10 ver pet - take back 10 Verkstans
+drop @Katy all ver - drop all variants of Verkstan made into Katy's drop box
+drop @Katy all - drop all items of same type in maker's inventory
+drop @Katy 20 ver pet - drop only 20 out of current Verkstan PETG inventory
+drop @Katy -10 ver pet - take back 10 Verkstans
 """
     maker = ctx.message.author
-    print('Command: drop for {0} {1} {2} {3} ({4})'.format(collector, num, item, variant, maker.display_name))
+    print('Command: drop {0} {1} {2} {3} ({4})'.format(collector, num, item, variant, maker.display_name))
 
     if num == 'all':
         result= await _count(ctx, 0, item, variant, delta=True, role=USER_ROLE_MAKERS, trial_run_only=True)
@@ -1501,7 +1488,7 @@ drop for @Katy -10 ver pet - take back 10 Verkstans
     # Update dropbox side of the transaction
     ctx.message.author = maker
     txt = '{0} {1} {2} {3}'.format(collector.mention, new_dropbox_count, confirmed_item, confirmed_variant)
-    await _post_user_record_to_trans_log(ctx, 'dropbox count', txt)
+    await _post_user_record_to_trans_log(ctx, 'drop', txt)
 
     if new_dropbox_count != 0:
         df.loc[(maker_user_id, confirmed_item, confirmed_variant, collector_user_id)] = \

@@ -182,7 +182,9 @@ sudo justin reset visor prusa
 sudo jds2001 collect count 3 viso prusa
 
 . sudo collect
+sudo justin collect
 sudo justin collect count 3 viso prusa
+sudo justin collect
 sudo justin collect add 3 prusa petg
 sudo justin collect reset visor prusa
 sudo justin collect remove visor prusa
@@ -244,45 +246,45 @@ sudo jds2001 collect from justin 3 visor prusa
 sudo Freddie collect from justin 3 visor prusa
 sudo Freddie collect from justin 1 ear
 
-. Errors - drop for
-drop for 1
-drop for justin not-a-number
-drop for justin 0 ear
+. Errors - drop
+drop 1
+drop justin not-a-number
+drop justin 0 ear
 
-. Error - Drop for
+. Error - drop
 remove all
-drop for justin 1 ear
-drop for justin 1
+drop justin 1 ear
+drop justin 1
 
-. set up inventory to test 'drop for'
+. set up inventory to test 'drop'
 count 10 ver pet
 count 20 pru pla
 
-. Error - use 'collect from' to check for errors on behalf of 'drop for'
-drop for justin 0 ver pet
-drop for timothyjryan 1 ver pet
-drop for justin all
+. Error - use 'collect from' to check for errors on behalf of 'drop'
+drop justin 0 ver pet
+drop timothyjryan 1 ver pet
+drop justin all
 
-. drop for
-drop for justin 1 ver pet
-drop for Freddie 2 ver pet
-drop for Freddie 3 pru pla
-drop for Freddie 2 pru pla
+. drop
+drop justin 1 ver pet
+drop Freddie 2 ver pet
+drop Freddie 3 pru pla
+drop Freddie 2 pru pla
 
 . negative drop - Error
-drop for justin -3 pru pla
-drop for Freddie -300 pru pla
+drop justin -3 pru pla
+drop Freddie -300 pru pla
 
 . undrop successfully
-drop for Freddie -2 pru pla
+drop Freddie -2 pru pla
 
 . Drop ALL
-drop for justin all pru pla
-drop for justin all ver
+drop justin all pru pla
+drop justin all ver
 
-. Sudo drop for
-sudo Freddie drop for justin -2 verk pet
-sudo Freddie drop for justin 3 verk pet
+. Sudo drop
+sudo Freddie drop justin -2 verk pet
+sudo Freddie drop justin 3 verk pet
 
 
 

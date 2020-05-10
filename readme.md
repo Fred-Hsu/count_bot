@@ -54,6 +54,18 @@ type of item, you don't even need to tell Count Bot what you make anymore. Just 
 Now, if you make more than one item or variant types, then you need to be more specific. But that's for another
 longer guide. Try typing '**help count**', and see what Count Bot tells you. 
 
+If you make ear savers, know that there are no variants. We don't care if you print with PETG or PLA. You can type the full name 'earsaver', or as usual, just the first three letters 'ear':
+
+<pre>
+Justin:
+<b>count 3 ear</b>
+
+Count Bot:
+✅ @Justin: count 3 earsaver
+count   item       variant
+    3   earsaver
+</pre>
+
 ### Public inventory channel vs private DM channel
 
 You can talk to Count Bot from either the public inventory channel **#bot-inventory**, or from your private
@@ -88,6 +100,31 @@ Count Bot:
  count  item       variant
      0  verkstan   PLA
 </pre>
+
+## Makers marking drop-offs ##
+
+There is a second way for collectors to move items from maker inventories into her collector inventory.
+This involves a two-step process, but is actually easier to carry out. It also mimicks real-life actions.
+
+After a maker drops off 4 Verkstan PLA head bands to Nicole, the maker can issue a 'drop' command to 
+remove these items off his maker inventory, so he can continue to print and count new head bands.
+Type 'help drop' to see details about this command.
+
+<pre>
+Freddie:
+<b>drop @Nicole 4 verkstan pla</b>
+
+Count Bot:
+✅ @Freddie: count 0 verkstan PLA
+count   item       variant
+   0   verkstan   PLA
+✅ @Freddie: drop @Nicole 4 verkstan PLA
+count   item       variant   collector
+    4   verkstan   PLA       @Nicole  
+</pre>
+
+[NOT YET IMPLEMENTED] - There will be a way for a collector to claim items in these dropboxes.
+That is coming.
 
 ### Find out who has what
 
@@ -124,12 +161,12 @@ Freddie:
 
 Count Bot:
 <b>Summary:</b>
-     item   variant   TOTAL   maker   collector
- verkstan       PLA      44      20          24
- verkstan      PETG      30       0          30
- visor     verkstan      50      50           0
+     item   variant   TOTAL   maker   dropbox  collector
+ verkstan       PLA      54      20        10     24
+ verkstan      PETG      30       0         0     30
+ visor     verkstan      50      50         0      0
  
-<b>Makers</b>
+<b>Makers:</b>
 
 verkstan PLA = 20 TOTAL
   0  Freddie
@@ -138,7 +175,13 @@ verkstan PLA = 20 TOTAL
 visor verkstan = 50 TOTAL
   50   Nicole
 
-<b>Collectors</b>
+<b>Dropboxes:</b>
+
+verkstan PLA = 10 TOTAL
+ 4  Freddie     Nicole
+ 6  Vinny       Nicole
+
+<b>Collectors:</b>
 
 verkstan PLA = 24 TOTAL
  24  Nicole
