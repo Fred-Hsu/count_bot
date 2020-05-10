@@ -214,6 +214,18 @@ verkstan PETG = 30 TOTAL
  30  Nicole
 </pre>
 
+You can ask Count Bot to send you a CSV file (comma-separated values) containing current inventory tables,
+including maker inventory, collector inventory and dropbox inventory. This file can be opened in Excel.
+
+<pre>
+Freddie:
+<b>excel</b>
+
+Count Bot:
+Inventory report in Excel-compatible CSV format:
+    product_inventory.csv
+</pre>
+
 ## The rest of user guide
 
 (to be written)
