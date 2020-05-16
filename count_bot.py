@@ -1624,11 +1624,13 @@ confirm @Anthony - move only items from Antony to the collection
 
     for maker_id, item, variant, item_count in entries:
 
+        # Remove the dropbox entry
         dropbox_df.drop((maker_id, item, variant, collector.id), inplace=True)
         ctx.message.author = mapped_makers[maker_id]
-        txt = '{0} {1} {2} {3}'.format(collector.mention, -item_count, item, variant)
+        txt = '{0} {1} {2} {3}'.format(collector.mention, 0, item, variant)
         await _post_user_record_to_trans_log(ctx, 'drop', txt)
 
+        # Increment the collection inventory
         ctx.message.author = collector
         await _count(ctx, item_count, item, variant, delta=True, role=USER_ROLE_COLLECTORS, display_result=False)
 
