@@ -46,10 +46,6 @@ DEBUG_DISABLE_INVENTORY_POSTS_FROM_DM = DEBUG_  # Disable any official inventory
 DEBUG_PRETEND_DM_IS_INVENTORY = DEBUG_  # Make interactions in DM channel mimic behavior seen in official inventory
 
 # FIXME - Julie doesn't need forecast counts. She needs actual 'collected' ledger transactions.
-# FIXME - add a 'drop-off' command to move items to a dropped box. Collectors add an emoji to confirm. Tnx rebuild looks for reactions in msgs.
-#         then add a third role 'dropped', between maker and collector. Implement 'drop' command. Allow collectors to apply msg response.
-#         'collect' shows maker's dropped entries if non-empty. 'Report shows 'dropped' in summmary, and as part of 'collectors' detail tables.
-#         read new 'drop' transaction log entries with maker and collector names.
 # FIXME - add command to produce sync point csv on demand, but only send to DM channel for manual backup
 # FIXME - add convenient spying tools: count @Freddie, report @Freddie, and collect @Freddie
 # FIXME - add 'collect from <maker>' - same as count @Freddie
@@ -96,7 +92,7 @@ COL_VARIANT = 'variant'
 COL_COUNT = 'count'
 
 # DiscordPy returns 'naive' datetime in UTC, not 'aware' datetime.
-# For comformity I just use naive UTC datetime as well. These are stored into CSV files also in naive UTC datetime.
+# For conformity I just use naive UTC datetime as well. These are stored into CSV files also in naive UTC datetime.
 COL_UPDATE_TIME = 'update_time'
 COL_HUMAN_INTERVAL = 'updated'
 
@@ -575,7 +571,7 @@ async def _send_df_as_msg_to_user(ctx, df, prefix=''):
         result = result.sort_index(axis='index')
         await ctx.send(prefix + "```{0}```".format(result.to_string(index=False)))
 
-async def _send_dropbox_df_as_msg_to_user(ctx, df, prefix=''):
+async def _send_dropbox_df_as_msg_to_maker(ctx, df, prefix=''):
     if not len(df):
         await ctx.send(prefix + "```(no dropbox records)```")
     else:
@@ -583,7 +579,19 @@ async def _send_dropbox_df_as_msg_to_user(ctx, df, prefix=''):
         mapped = await _map_user_id_column_to_display_names(dropped)
         renamed = mapped.rename(columns={COL_SECOND_USER_ID: COL_COLLECTOR_NAME})
         result = _add_human_interval_col(renamed)
-        result = result.loc[:, [COL_COUNT, COL_ITEM, COL_VARIANT, COL_COLLECTOR_NAME, COL_HUMAN_INTERVAL]]
+        result = result.loc[:, [COL_COLLECTOR_NAME, COL_ITEM, COL_VARIANT, COL_COUNT, COL_HUMAN_INTERVAL]]
+        result = result.sort_index(axis='index')
+        await ctx.send(prefix + "```{0}```".format(result.to_string(index=False)))
+
+async def _send_dropbox_df_as_msg_to_collector(ctx, df, prefix=''):
+    if not len(df):
+        await ctx.send(prefix + "```(your dropbox is empty)```")
+    else:
+        dropped = df.drop(columns=COL_SECOND_USER_ID)
+        mapped = await _map_user_id_column_to_display_names(dropped)
+        renamed = mapped.rename(columns={COL_USER_ID: COL_MAKER_NAME})
+        result = _add_human_interval_col(renamed)
+        result = result.loc[:, [COL_MAKER_NAME, COL_ITEM, COL_VARIANT, COL_COUNT, COL_HUMAN_INTERVAL]]
         result = result.sort_index(axis='index')
         await ctx.send(prefix + "```{0}```".format(result.to_string(index=False)))
 
@@ -648,7 +656,7 @@ async def show_maker_inventory_and_dropbox(ctx):
     dropbox_found_num = sum(dropbox_cond)
 
     if dropbox_found_num:
-        await _send_dropbox_df_as_msg_to_user(ctx, dropbox_df[dropbox_cond], prefix="Items you dropped off:")
+        await _send_dropbox_df_as_msg_to_maker(ctx, dropbox_df[dropbox_cond], prefix="Items you dropped off:")
 
 @bot.command(
     brief="Update the current count of items from a maker",
@@ -693,7 +701,7 @@ count 20 prusa - shortcut to update a single variant of prusa shield you make.
     await _count(ctx, total, item, variant)
 
 async def _count(ctx, total: int = None, item: str = None, variant: str = None, delta: bool = False,
-                 role=USER_ROLE_MAKERS, trial_run_only=False):
+                 role=USER_ROLE_MAKERS, trial_run_only=False, display_result=True):
     """
     Internal implementation of count, add and reset.
     This is one of the very few fundamental methods that produces a command record in the transaction log.
@@ -820,8 +828,11 @@ async def _count(ctx, total: int = None, item: str = None, variant: str = None, 
     # If the bot crashes right here, it can always restore its previous state by trolling through the inventory
     # channel and all DM rooms, to find user commands it has not successfully processed.
     df.loc[(user_id, item, variant)] = [user_id, item, variant, total, datetime.utcnow()]
-    msg_prefix = "previous count: {0}  delta: {1}".format(current_count, total-current_count)
-    await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)], prefix=msg_prefix)
+    msg_prefix = "previous count: {0}  delta: {1}".format(current_count, total - current_count)
+    if display_result:
+        await _send_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == user_id)], prefix=msg_prefix)
+    else:
+        await ctx.send(msg_prefix)
 
 @bot.command(
     brief="Same as 'count 0'")
@@ -977,6 +988,10 @@ async def _map_dm_user_to_member(user):
         raise RuntimeError('User "{0}" not a member of my associated guild'.format(user))
 
     raise RuntimeError('Unexpected type for "{0}"'.format(user))
+
+async def _map_dm_user_ids_to_members(user_ids):
+    guild = _get_first_guild()
+    return {user_id: guild.get_member(user_id) for user_id in set(user_ids)}
 
 async def _map_user_ids_to_display_names(ids, pad_for_print=True):
     # If a user id isn't found to be associated to this guild, it will not be included in the returned map.
@@ -1181,13 +1196,14 @@ sudo <maker> add [total] [item] [variant]
 sudo <maker> count [total] [item] [variant]
 sudo <maker> remove [item] [variant]
 sudo <maker> reset [item] [variant]
+sudo <maker> drop <collector> [count] [item] [variant]
+sudo <collector> confirm
 sudo <collector> collect
 sudo <collector> collect add [total] [item] [variant]
 sudo <collector> collect count [total] [item] [variant]
 sudo <collector> collect remove [item] [variant]
 sudo <collector> collect reset [item] [variant]
 sudo <collector> collect from <maker> [count] [item] [variant]
-sudo <maker> drop <collector> [count] [item] [variant]
 """
     sudo_author = ctx.message.author
     print('Command: sudo {0} {1} {2} ({3})'.format(member, command, args, sudo_author.display_name))
@@ -1215,7 +1231,7 @@ sudo <maker> drop <collector> [count] [item] [variant]
 
     if command not in ('count', 'remove', 'add', 'reset',
                        'collect', 'collect count', 'collect remove', 'collect add', 'collect reset', 'collect from',
-                       'drop'):
+                       'drop', 'confirm'):
         await ctx.send("❌  command '{0}' not supported by sudo".format(command))
         return
 
@@ -1466,7 +1482,7 @@ drop @Katy -10 ver pet - take back 10 Verkstans
         try:
             num = int(num)
         except:
-            await ctx.send("❌  'all' or a number is exepcted. Got '{0}'. See help.".format(num))
+            await ctx.send("❌  'all' or a number is expected. Got '{0}'. See help.".format(num))
             await ctx.send_help(ctx.command)
             return
 
@@ -1540,7 +1556,85 @@ drop @Katy -10 ver pet - take back 10 Verkstans
 
     # Only update memory DF after we have persisted the message to the inventory channel.
     msg_prefix = "previous count: {0}  delta: {1}".format(current_dropped_count, num)
-    await _send_dropbox_df_as_msg_to_user(ctx, df[(df[COL_USER_ID] == maker_user_id)], prefix=msg_prefix)
+    await _send_dropbox_df_as_msg_to_maker(ctx, df[(df[COL_USER_ID] == maker_user_id)], prefix=msg_prefix)
+
+@bot.command(
+    brief="A collector confirms dropped items",
+    description="A maker confirms items in dropboxes:")
+async def confirm(ctx, maker: str = None):
+    """
+This prints out all items in a collector's dropbox, showing individual contributions from makers. \
+The collector can then choose to confirm and accept all of these items, or items from individual makers.
+
+confirm - a collector looks at items in her dropbox
+confirm all - move all items in the dropbox into her collection
+confirm @Anthony - move only items from Antony to the collection
+"""
+    collector = ctx.message.author
+    print('Command: confirm {0} ({1})'.format(maker, collector.display_name))
+
+    is_collector = await _user_has_role(collector, COLLECTOR_ROLE_NAME)
+    if not is_collector:
+        await ctx.send("❌  You need to have the collector role to use the 'confirm' command.")
+        raise NotEntitledError()
+
+    dropbox_df = INVENTORY_BY_USER_ROLE[USER_ROLE_DROPBOXES]
+    dropbox_cond = dropbox_df[COL_SECOND_USER_ID] == collector.id
+
+    if maker is None:
+        await _send_dropbox_df_as_msg_to_collector(ctx, dropbox_df[dropbox_cond], prefix="Items in your dropbox from makers:")
+        return
+
+    dropbox_found_num = sum(dropbox_cond)
+    if not dropbox_found_num:
+        await ctx.send("You have no items in your dropbox")
+        return
+
+    if maker != 'all':
+        converter = commands.MemberConverter()
+        maker_input = maker
+        maker = await converter.convert(ctx, maker_input)
+        print("converted '{0}' to '{1}'".format(maker_input, maker))
+
+        dropbox_cond = dropbox_cond & (dropbox_df[COL_USER_ID] == maker.id)
+        dropbox_found_num = sum(dropbox_cond)
+
+        if not dropbox_found_num:
+            await ctx.send("You have no items in your dropbox from maker '{0}'.".format(maker))
+            return
+
+    df = dropbox_df[dropbox_cond]
+    remapped = df.loc[:, [COL_USER_ID, COL_ITEM, COL_VARIANT, COL_COUNT]]
+    sorted_df= remapped.sort_index(axis='index')
+
+    entries = []
+    maker_ids = set()
+    for _index, row in sorted_df.iterrows():
+        maker_id = row[COL_USER_ID]
+        item = row[COL_ITEM]
+        variant = row[COL_VARIANT]
+        item_count = row[COL_COUNT]
+        entries.append([maker_id, item, variant, item_count])
+        maker_ids.add(maker_id)
+
+    mapped_makers = await _map_dm_user_ids_to_members(maker_ids)
+
+    ctx.message.author = collector
+    await _send_dropbox_df_as_msg_to_collector(ctx, dropbox_df[dropbox_cond], prefix="Collecting these items from the dropbox...")
+
+    for maker_id, item, variant, item_count in entries:
+
+        dropbox_df.drop((maker_id, item, variant, collector.id), inplace=True)
+        ctx.message.author = mapped_makers[maker_id]
+        txt = '{0} {1} {2} {3}'.format(collector.mention, -item_count, item, variant)
+        await _post_user_record_to_trans_log(ctx, 'drop', txt)
+
+        ctx.message.author = collector
+        await _count(ctx, item_count, item, variant, delta=True, role=USER_ROLE_COLLECTORS, display_result=False)
+
+    ctx.message.author = collector
+    await ctx.send("Finished collecting all items from your dropbox. Current collection:")
+    await _count(ctx, role=USER_ROLE_COLLECTORS)
 
 if __name__ == '__main__':
     bot.run(get_bot_token())

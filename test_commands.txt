@@ -286,6 +286,36 @@ drop justin all ver
 sudo Freddie drop justin -2 verk pet
 sudo Freddie drop justin 3 verk pet
 
+. Error - confirm
+sudo timothyjryan confirm
+
+. collectors confirm drops
+confirm
+sudo justin confirm
+sudo justin confirm Freddie
+
+. Add more inventory
+sudo jds2001 count 40 verk pet
+sudo jds2001 count 50 pru pla
+sudo jds2001 drop justin all verk pet
+sudo jds2001 drop justin all pru pla
+
+. confirm - show all items
+sudo justin confirm
+
+. no items from this maker
+sudo justin confirm maggotbrain
+
+. no items at all
+confirm all
+
+. confirm all items from all makers
+sudo justin confirm all
+
+. Additional confirmation
+count 10 ear
+drop justin all ear
+sudo justin confirm Freddie
 
 
 
