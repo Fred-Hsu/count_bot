@@ -1204,6 +1204,7 @@ sudo <collector> collect count [total] [item] [variant]
 sudo <collector> collect remove [item] [variant]
 sudo <collector> collect reset [item] [variant]
 sudo <collector> collect from <maker> [count] [item] [variant]
+sudo <user> excel
 """
     sudo_author = ctx.message.author
     print('Command: sudo {0} {1} {2} ({3})'.format(member, command, args, sudo_author.display_name))
@@ -1231,7 +1232,7 @@ sudo <collector> collect from <maker> [count] [item] [variant]
 
     if command not in ('count', 'remove', 'add', 'reset',
                        'collect', 'collect count', 'collect remove', 'collect add', 'collect reset', 'collect from',
-                       'drop', 'confirm'):
+                       'drop', 'confirm', 'excel'):
         await ctx.send("❌  command '{0}' not supported by sudo".format(command))
         return
 
